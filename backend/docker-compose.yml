@@ -1,0 +1,91 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: wisetsuk-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wisetsuk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ต้องกำหนด POSTGRES_PASSWORD ในไฟล์ .env}
+      POSTGRES_DB: ${POSTGRES_DB:-wisetsuk}
+      TZ: Asia/Bangkok
+      # ให้ collation ภาษาไทยเรียงถูกต้อง
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      # เปิดออกมาเฉพาะ localhost เพื่อไม่ให้ฐานข้อมูลโผล่สู่เครือข่ายภายนอก
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wisetsuk} -d ${POSTGRES_DB:-wisetsuk}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wisetsuk-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-wisetsuk}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wisetsuk}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?ต้องกำหนด JWT_SECRET (อย่างน้อย 32 ตัวอักษร) ในไฟล์ .env}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      UPLOAD_DIR: /app/uploads
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-5}
+      ACCESS_TOKEN_TTL_MIN: ${ACCESS_TOKEN_TTL_MIN:-30}
+      REFRESH_TOKEN_TTL_DAY: ${REFRESH_TOKEN_TTL_DAY:-30}
+      SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD:-Wisetsuk!2026}
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - uploads:/app/uploads
+
+  # GUI จัดการฐานข้อมูล — เปิดที่ http://localhost:5050
+  pgadmin:
+    image: dpage/pgadmin4:8.12
+    container_name: wisetsuk-pgadmin
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@wisetsuk.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?ต้องกำหนด PGADMIN_PASSWORD ในไฟล์ .env}
+      # ปิด master password เพราะเข้าถึงได้เฉพาะ localhost อยู่แล้ว
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_DISABLE_POSTFIX: "True"
+    volumes:
+      # ลงทะเบียนเซิร์ฟเวอร์ไว้ล่วงหน้า ไม่ต้องกรอก host/port/user เอง
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - pgadmin-data:/var/lib/pgadmin
+    ports:
+      # ผูกกับ localhost เท่านั้น — เครื่องมือจัดการ DB ต้องไม่โผล่สู่เครือข่ายภายนอก
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
+
+  # รันครั้งเดียวเพื่อใส่ข้อมูลตั้งต้น:  docker compose run --rm seed
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/app/seed"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-wisetsuk}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wisetsuk}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET}
+      SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD:-Wisetsuk!2026}
+
+volumes:
+  db-data:
+  uploads:
+  pgadmin-data:

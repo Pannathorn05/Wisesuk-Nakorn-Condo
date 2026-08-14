@@ -1,0 +1,21 @@
+# ความลับ — ห้าม commit
+.env
+.env.local
+.env.production
+
+# ไฟล์ที่ผู้ใช้อัปโหลด (สลิป / รูปภาพ)
+uploads/
+
+# binary
+/api
+/seed
+*.exe
+*.exe~
+
+# เครื่องมือ
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+/docker/
