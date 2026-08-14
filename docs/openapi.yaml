@@ -1,0 +1,2125 @@
+openapi: 3.0.3
+
+info:
+  title: Wisetsuk Nakorn Condo Booking API
+  version: 1.0.0
+  description: |
+    REST API ระบบจองห้องพักวิเศษสุขนครคอนโด
+    แหล่งความจริงเดียวของ contract — ทุก endpoint ตรงกับหัวข้อ API Contract ใน docs/SPEC.md
+
+servers:
+  - url: http://localhost:8080
+    description: development
+
+tags:
+  - name: system
+    description: ตรวจสอบสถานะระบบ
+  - name: auth
+    description: สมัครสมาชิก เข้าสู่ระบบ และจัดการ token
+  - name: guest
+    description: ข้อมูลสาธารณะที่ดูได้โดยไม่ต้องล็อกอิน
+  - name: me
+    description: โปรไฟล์ รหัสผ่าน และแจ้งเตือนของผู้ใช้ที่ล็อกอินอยู่
+  - name: bookings
+    description: สร้างและจัดการการจองของสมาชิก
+  - name: admin
+    description: งานของผู้ดูแล จำกัดอยู่ที่สาขาของตัวเองเท่านั้น
+  - name: superadmin
+    description: งานที่ทำได้เฉพาะผู้ดูแลสูงสุด
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: ตรวจสอบสถานะระบบ
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: ระบบทำงานปกติ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, time]
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  time:
+                    type: string
+                    format: date-time
+
+  /api/v1/auth/register:
+    post:
+      tags: [auth]
+      summary: สมัครสมาชิก
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: สมัครสำเร็จ ได้สิทธิ์ member เสมอ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: เข้าสู่ระบบ (ใช้ endpoint เดียวทุกบทบาท)
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: เข้าสู่ระบบสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResult'
+        '401':
+          description: อีเมลไม่มีในระบบหรือรหัสผ่านผิด (ข้อความเหมือนกันทั้งสองกรณี)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: invalid_credentials
+                  message: อีเมลหรือรหัสผ่านไม่ถูกต้อง
+        '403':
+          description: บัญชีถูกปิดใช้งาน
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: account_disabled
+                  message: บัญชีนี้ถูกปิดใช้งาน
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: หมุน refresh token
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: ได้ token คู่ใหม่
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: ออกจากระบบ
+      operationId: logout
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: ตอบ 204 เสมอ ไม่ว่า token จะใช้ได้หรือไม่
+
+  /api/v1/branches:
+    get:
+      tags: [guest]
+      summary: รายการสาขา
+      operationId: listBranches
+      security: []
+      responses:
+        '200':
+          description: รายการสาขาที่เปิดใช้งาน
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Branch'
+
+  /api/v1/branches/{branchID}:
+    get:
+      tags: [guest]
+      summary: รายละเอียดสาขาพร้อมรูป สิ่งอำนวยความสะดวก และสถานที่ใกล้เคียง
+      operationId: getBranch
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/BranchIDPath'
+      responses:
+        '200':
+          description: รายละเอียดสาขา
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/amenities:
+    get:
+      tags: [guest]
+      summary: รายการสิ่งอำนวยความสะดวกทั้งหมด
+      operationId: listAmenities
+      security: []
+      responses:
+        '200':
+          description: รายการสิ่งอำนวยความสะดวก
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Amenity'
+
+  /api/v1/room-types:
+    get:
+      tags: [guest]
+      summary: รายการประเภทห้อง
+      operationId: listRoomTypes
+      security: []
+      parameters:
+        - name: branch_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: รายการประเภทห้อง
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoomType'
+
+  /api/v1/rooms/search:
+    get:
+      tags: [guest]
+      summary: ค้นหาห้องว่าง
+      operationId: searchRooms
+      security: []
+      parameters:
+        - name: branch_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: room_type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: stay_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/StayType'
+        - name: check_in
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: check_out
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: move_in_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: min_price
+          in: query
+          schema:
+            type: number
+        - name: max_price
+          in: query
+          schema:
+            type: number
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: ผลการค้นหาแบบแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Room'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/rooms/{roomID}:
+    get:
+      tags: [guest]
+      summary: รายละเอียดห้อง
+      operationId: getRoom
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RoomIDPath'
+      responses:
+        '200':
+          description: รายละเอียดห้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/me:
+    get:
+      tags: [me]
+      summary: ข้อมูลผู้ใช้ที่ล็อกอินอยู่
+      operationId: getMe
+      responses:
+        '200':
+          description: ข้อมูลผู้ใช้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [me]
+      summary: แก้ไขโปรไฟล์
+      operationId: updateMe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/me/password:
+    post:
+      tags: [me]
+      summary: เปลี่ยนรหัสผ่าน (เพิกถอน refresh token ทุกใบ)
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: เปลี่ยนรหัสผ่านสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message]
+                properties:
+                  message:
+                    type: string
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/me/notifications:
+    get:
+      tags: [me]
+      summary: รายการแจ้งเตือนของตัวเอง
+      operationId: listNotifications
+      responses:
+        '200':
+          description: รายการแจ้งเตือนพร้อมจำนวนที่ยังไม่อ่าน
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, unread_count]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  unread_count:
+                    type: integer
+
+  /api/v1/me/notifications/read:
+    post:
+      tags: [me]
+      summary: ทำเครื่องหมายว่าอ่านแล้ว (ไม่ระบุ id = อ่านทั้งหมด)
+      operationId: markNotificationsRead
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+      responses:
+        '204':
+          description: สำเร็จ ตอบ 204 แม้ id ไม่ใช่ของตัวเองหรือไม่มีจริง
+
+  /api/v1/bookings:
+    get:
+      tags: [bookings]
+      summary: รายการการจองของตัวเอง
+      operationId: listMyBookings
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - name: stay_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/StayType'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: รายการการจองแบบแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Booking'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+    post:
+      tags: [bookings]
+      summary: สร้างการจอง
+      operationId: createBooking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: จองสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: ไม่พบห้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: not_found
+                  message: ไม่พบห้องพักที่ระบุ
+        '409':
+          description: ห้องไม่ว่าง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: room_unavailable
+                  message: ห้องนี้ถูกจองแล้ว
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/bookings/{bookingID}:
+    get:
+      tags: [bookings]
+      summary: รายละเอียดการจอง
+      operationId: getBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingIDPath'
+      responses:
+        '200':
+          description: รายละเอียดการจอง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '404':
+          description: ไม่พบ ไม่ใช่เจ้าของ หรือคนละสาขา
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: not_found
+                  message: ไม่พบการจองที่ระบุ
+
+  /api/v1/bookings/{bookingID}/slip:
+    get:
+      tags: [bookings]
+      summary: ดาวน์โหลดสลิปโอนเงิน (ตรวจสิทธิ์ก่อนเสิร์ฟ)
+      operationId: getBookingSlip
+      parameters:
+        - $ref: '#/components/parameters/BookingIDPath'
+      responses:
+        '200':
+          description: ไฟล์สลิป
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: ไม่พบ ไม่มีสิทธิ์ หรือยังไม่เคยแนบสลิป (ตอบเหมือนกันหมด)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/bookings/{bookingID}/cancel:
+    post:
+      tags: [bookings]
+      summary: ยกเลิกการจอง
+      operationId: cancelBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingIDPath'
+      responses:
+        '200':
+          description: ยกเลิกสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+
+  /api/v1/bookings/{bookingID}/payment:
+    post:
+      tags: [bookings]
+      summary: แจ้งชำระเงินพร้อมแนบสลิป
+      operationId: submitPayment
+      parameters:
+        - $ref: '#/components/parameters/BookingIDPath'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [slip, amount, transferred_at]
+              properties:
+                slip:
+                  type: string
+                  format: binary
+                amount:
+                  type: number
+                transferred_at:
+                  type: string
+                  format: date-time
+                note:
+                  type: string
+      responses:
+        '200':
+          description: แจ้งชำระเงินสำเร็จ สถานะเป็น awaiting_review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: ไฟล์ไม่ถูกต้องหรือใหญ่เกินกำหนด
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: bad_request
+                  message: ไฟล์สลิปไม่ถูกต้อง
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/dashboard:
+    get:
+      tags: [admin]
+      summary: แดชบอร์ดผู้ดูแล
+      operationId: getAdminDashboard
+      responses:
+        '200':
+          description: สรุปข้อมูลรายสาขาและรายการล่าสุด
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [branches, recent]
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BranchSummary'
+                  recent:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Booking'
+
+  /api/v1/admin/activity-logs:
+    get:
+      tags: [admin]
+      summary: บันทึกการกระทำ
+      operationId: listActivityLogs
+      parameters:
+        - name: actor_role
+          in: query
+          schema:
+            $ref: '#/components/schemas/ActorRole'
+        - name: actor_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          schema:
+            $ref: '#/components/schemas/ActivityAction'
+        - $ref: '#/components/parameters/BranchIDQuery'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: รายการบันทึกแบบแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityLog'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+
+  /api/v1/admin/bookings:
+    get:
+      tags: [admin]
+      summary: รายการการจองในสาขาที่ดูแล
+      operationId: listAdminBookings
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - name: stay_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/StayType'
+        - name: search
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/BranchIDQuery'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: รายการการจองแบบแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Booking'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+
+  /api/v1/admin/bookings/{bookingID}/approve:
+    post:
+      tags: [admin]
+      summary: อนุมัติการจอง
+      operationId: approveBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingIDPath'
+      responses:
+        '200':
+          description: อนุมัติสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '404':
+          description: ไม่พบ หรือเป็นใบของสาขาอื่น
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+
+  /api/v1/admin/bookings/{bookingID}/reject:
+    post:
+      tags: [admin]
+      summary: ปฏิเสธการจอง (ใบกลับไปสถานะ pending_payment)
+      operationId: rejectBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: ปฏิเสธสำเร็จ ใบกลับไป pending_payment และตั้ง expires_at ใหม่
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '404':
+          description: ไม่พบ หรือเป็นใบของสาขาอื่น
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/bookings/{bookingID}/appointment:
+    put:
+      tags: [admin]
+      summary: นัดหมายทำสัญญา (เฉพาะใบรายเดือน)
+      operationId: setBookingAppointment
+      parameters:
+        - $ref: '#/components/parameters/BookingIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appointment_at]
+              properties:
+                appointment_at:
+                  type: string
+                  format: date-time
+                note:
+                  type: string
+      responses:
+        '200':
+          description: นัดหมายสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: ไม่ใช่การจองรายเดือน
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: bad_request
+                  message: นัดหมายทำสัญญาใช้ได้เฉพาะการจองรายเดือน
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/members:
+    get:
+      tags: [admin]
+      summary: รายชื่อสมาชิก
+      operationId: listMembers
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: รายชื่อสมาชิกแบบแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+
+  /api/v1/admin/members/{memberID}/bookings:
+    get:
+      tags: [admin]
+      summary: การจองของสมาชิกรายคน
+      operationId: listMemberBookings
+      parameters:
+        - name: memberID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: รายการการจองแบบแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Booking'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+
+  /api/v1/admin/rooms:
+    get:
+      tags: [admin]
+      summary: รายการห้องในสาขาที่ดูแล
+      operationId: listAdminRooms
+      parameters:
+        - $ref: '#/components/parameters/BranchIDQuery'
+        - name: room_type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/RoomStatus'
+        - name: stay_type
+          in: query
+          schema:
+            $ref: '#/components/schemas/StayType'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: รายการห้องแบบแบ่งหน้า
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Room'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+    post:
+      tags: [admin]
+      summary: เพิ่มห้อง
+      operationId: createRoom
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomRequest'
+      responses:
+        '201':
+          description: เพิ่มห้องสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/rooms/{roomID}:
+    put:
+      tags: [admin]
+      summary: แก้ไขห้อง
+      operationId: updateRoom
+      parameters:
+        - $ref: '#/components/parameters/RoomIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoomRequest'
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+    delete:
+      tags: [admin]
+      summary: ลบห้อง (soft delete)
+      operationId: deleteRoom
+      parameters:
+        - $ref: '#/components/parameters/RoomIDPath'
+      responses:
+        '204':
+          description: ลบสำเร็จ
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: ห้องยังมีการจองที่ยังไม่จบค้างอยู่
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: conflict
+                  message: ลบไม่ได้ ห้องนี้ยังมีการจองค้างอยู่
+
+  /api/v1/admin/rooms/{roomID}/status:
+    patch:
+      tags: [admin]
+      summary: เปลี่ยนสถานะห้อง
+      operationId: updateRoomStatus
+      parameters:
+        - $ref: '#/components/parameters/RoomIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/RoomStatus'
+      responses:
+        '200':
+          description: เปลี่ยนสถานะสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '409':
+          description: มีการจองที่ยังไม่จบค้างอยู่
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: conflict
+                  message: เปลี่ยนสถานะไม่ได้ ห้องนี้ยังมีการจองค้างอยู่
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/branch:
+    put:
+      tags: [admin]
+      summary: แก้ไขรายละเอียดสาขา
+      operationId: updateBranch
+      parameters:
+        - $ref: '#/components/parameters/BranchIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBranchRequest'
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/branch/amenities:
+    put:
+      tags: [admin]
+      summary: กำหนดสิ่งอำนวยความสะดวกของสาขา
+      operationId: updateBranchAmenities
+      parameters:
+        - $ref: '#/components/parameters/BranchIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amenity_ids]
+              properties:
+                amenity_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: บันทึกสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Amenity'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+
+  /api/v1/admin/branch/nearby:
+    put:
+      tags: [admin]
+      summary: กำหนดสถานที่ใกล้เคียงของสาขา
+      operationId: updateBranchNearby
+      parameters:
+        - $ref: '#/components/parameters/BranchIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/NearbyPlaceInput'
+      responses:
+        '200':
+          description: บันทึกสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NearbyPlace'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/branch/images:
+    post:
+      tags: [admin]
+      summary: เพิ่มรูปสาขา (รับเป็น URL ภายนอกเท่านั้น)
+      operationId: addBranchImage
+      parameters:
+        - $ref: '#/components/parameters/BranchIDQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_url]
+              properties:
+                image_url:
+                  type: string
+                  format: uri
+                caption:
+                  type: string
+                sort_order:
+                  type: integer
+      responses:
+        '201':
+          description: เพิ่มรูปสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchImage'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '422':
+          description: URL ไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: validation_failed
+                  message: ข้อมูลไม่ถูกต้อง
+                  fields:
+                    image_url: ต้องเป็น URL แบบ http หรือ https และต้องมีชื่อโฮสต์
+
+  /api/v1/admin/branch/images/{imageID}:
+    delete:
+      tags: [admin]
+      summary: ลบรูปสาขา
+      operationId: deleteBranchImage
+      parameters:
+        - name: imageID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/BranchIDQuery'
+      responses:
+        '204':
+          description: ลบสำเร็จ
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/superadmin/branches:
+    get:
+      tags: [superadmin]
+      summary: รายการสาขาทั้งหมดรวมที่ปิดใช้งาน
+      operationId: listAllBranches
+      responses:
+        '200':
+          description: รายการสาขา
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Branch'
+
+  /api/v1/superadmin/staff:
+    get:
+      tags: [superadmin]
+      summary: รายชื่อผู้ดูแล
+      operationId: listStaff
+      responses:
+        '200':
+          description: รายชื่อผู้ดูแล
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      tags: [superadmin]
+      summary: เพิ่มบัญชีผู้ดูแล
+      operationId: createStaff
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStaffRequest'
+      responses:
+        '201':
+          description: เพิ่มสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '422':
+          description: อีเมลซ้ำหรือไม่พบสาขา
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: validation_failed
+                  message: ข้อมูลไม่ถูกต้อง
+                  fields:
+                    email: อีเมลนี้ถูกใช้งานแล้ว
+
+  /api/v1/superadmin/staff/{userID}:
+    put:
+      tags: [superadmin]
+      summary: แก้ไขบัญชีผู้ดูแล
+      operationId: updateStaff
+      parameters:
+        - $ref: '#/components/parameters/UserIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStaffRequest'
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: ระงับบัญชีตัวเองไม่ได้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: bad_request
+                  message: ระงับบัญชีตัวเองไม่ได้
+        '404':
+          description: ไม่พบ หรือเป้าหมายเป็นสมาชิกไม่ใช่ผู้ดูแล
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [superadmin]
+      summary: ลบบัญชีผู้ดูแล (soft delete)
+      operationId: deleteStaff
+      parameters:
+        - $ref: '#/components/parameters/UserIDPath'
+      responses:
+        '204':
+          description: ลบสำเร็จ
+        '400':
+          description: ลบบัญชีตัวเองไม่ได้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: bad_request
+                  message: ลบบัญชีตัวเองไม่ได้
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    BranchIDQuery:
+      name: branch_id
+      in: query
+      required: false
+      description: ผู้ดูแลระบุสาขาอื่นที่ไม่ใช่ของตัวเองไม่ได้ จะได้ 403
+      schema:
+        type: string
+        format: uuid
+    BranchIDPath:
+      name: branchID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RoomIDPath:
+      name: roomID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BookingIDPath:
+      name: bookingID
+      in: path
+      required: true
+      description: UUID ของการจอง ไม่ใช่ booking_code
+      schema:
+        type: string
+        format: uuid
+    UserIDPath:
+      name: userID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: คำขอไม่ถูกต้อง
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: bad_request
+              message: คำขอไม่ถูกต้อง
+    Unauthorized:
+      description: ไม่ได้ล็อกอินหรือ token ใช้ไม่ได้
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: unauthorized
+              message: กรุณาเข้าสู่ระบบ
+    ForbiddenCrossBranch:
+      description: ไม่มีสิทธิ์เข้าถึงข้อมูลข้ามสาขา
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: forbidden
+              message: เข้าถึงข้อมูลสาขาอื่นไม่ได้
+    NotFound:
+      description: ไม่พบข้อมูล
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: not_found
+              message: ไม่พบข้อมูลที่ระบุ
+    InvalidState:
+      description: สถานะปัจจุบันทำรายการนี้ไม่ได้
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: invalid_state
+              message: สถานะปัจจุบันทำรายการนี้ไม่ได้
+    ValidationFailed:
+      description: ข้อมูลไม่ผ่านการตรวจสอบ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: validation_failed
+              message: ข้อมูลไม่ถูกต้อง
+              fields:
+                email: อีเมลนี้ถูกใช้งานแล้ว
+
+  schemas:
+
+    ErrorCode:
+      type: string
+      enum:
+        - unauthorized
+        - forbidden
+        - not_found
+        - conflict
+        - bad_request
+        - validation_failed
+        - method_not_allowed
+        - internal_error
+        - invalid_credentials
+        - account_disabled
+        - room_unavailable
+        - invalid_state
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              $ref: '#/components/schemas/ErrorCode'
+            message:
+              type: string
+              description: ข้อความภาษาไทยสำหรับผู้ใช้
+            fields:
+              type: object
+              nullable: true
+              description: มีเฉพาะตอน code = validation_failed
+              additionalProperties:
+                type: string
+
+    StayType:
+      type: string
+      enum: [daily, monthly]
+
+    BookingStatus:
+      type: string
+      enum: [pending_payment, awaiting_review, approved, cancelled]
+
+    RoomStatus:
+      type: string
+      enum: [available, occupied, maintenance]
+
+    UserRole:
+      type: string
+      enum: [member, admin, super_admin]
+
+    ActorRole:
+      type: string
+      enum: [member, admin, super_admin, system]
+
+    PaymentStatus:
+      type: string
+      enum: [pending, approved, rejected]
+
+    ActivityAction:
+      type: string
+      enum:
+        - user.register
+        - profile.update
+        - password.change
+        - booking.create
+        - payment.submit
+        - booking.cancel_by_member
+        - booking.cancel_by_admin
+        - booking.approve
+        - booking.reject
+        - booking.appointment_set
+        - room.create
+        - room.update
+        - room.status_change
+        - room.delete
+        - branch.update
+        - branch.amenities_update
+        - branch.nearby_update
+        - branch.image_add
+        - branch.image_delete
+        - staff.create
+        - staff.update
+        - staff.delete
+        - booking.auto_expire
+
+    PageMeta:
+      type: object
+      required: [page, page_size, total_items, total_pages]
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_items:
+          type: integer
+        total_pages:
+          type: integer
+
+    User:
+      type: object
+      required: [id, email, first_name, last_name, phone, role, is_active, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        branch_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: มีค่าเฉพาะ role = admin
+        avatar_url:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+
+    AuthResult:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          required: [user]
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+
+    RegisterRequest:
+      type: object
+      required: [email, password, first_name, last_name, phone]
+      additionalProperties: false
+      description: ส่งฟิลด์ role แถมมาจะได้ 422
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        phone:
+          type: string
+          pattern: '^[0-9]{9,10}$'
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        phone:
+          type: string
+          pattern: '^[0-9]{9,10}$'
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password, confirm_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 72
+        confirm_password:
+          type: string
+
+    Amenity:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        icon:
+          type: string
+          nullable: true
+
+    RoomType:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        branch_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        capacity:
+          type: integer
+          nullable: true
+
+    BranchImage:
+      type: object
+      required: [id, image_url, sort_order]
+      properties:
+        id:
+          type: string
+          format: uuid
+        image_url:
+          type: string
+          format: uri
+        caption:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+
+    NearbyPlaceInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+          nullable: true
+        distance_km:
+          type: number
+          nullable: true
+
+    NearbyPlace:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: string
+              format: uuid
+        - $ref: '#/components/schemas/NearbyPlaceInput'
+
+    Branch:
+      type: object
+      required: [id, name, address, contract_fee, is_active]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        address:
+          type: string
+        phones:
+          type: array
+          items:
+            type: string
+        contract_fee:
+          type: number
+          description: ค่าทำสัญญาที่เก็บตอนจองรายเดือน
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    BranchSummary:
+      type: object
+      required: [branch_id, name]
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        total_rooms:
+          type: integer
+        available_rooms:
+          type: integer
+        occupied_rooms:
+          type: integer
+        pending_bookings:
+          type: integer
+
+    BranchDetail:
+      allOf:
+        - $ref: '#/components/schemas/Branch'
+        - type: object
+          required: [images, amenities, nearby]
+          properties:
+            images:
+              type: array
+              items:
+                $ref: '#/components/schemas/BranchImage'
+            amenities:
+              type: array
+              items:
+                $ref: '#/components/schemas/Amenity'
+            nearby:
+              type: array
+              items:
+                $ref: '#/components/schemas/NearbyPlace'
+
+    UpdateBranchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        phones:
+          type: array
+          items:
+            type: string
+        contract_fee:
+          type: number
+          minimum: 0
+
+    Room:
+      type: object
+      required: [id, branch_id, room_number, stay_type, price, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        branch_id:
+          type: string
+          format: uuid
+        room_type_id:
+          type: string
+          format: uuid
+          nullable: true
+        room_number:
+          type: string
+        floor:
+          type: integer
+          nullable: true
+        stay_type:
+          $ref: '#/components/schemas/StayType'
+        price:
+          type: number
+          description: ราคาต่อคืนเมื่อ stay_type = daily และราคาต่อเดือนเมื่อ monthly
+        status:
+          $ref: '#/components/schemas/RoomStatus'
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateRoomRequest:
+      type: object
+      required: [branch_id, room_number, stay_type, price]
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        room_type_id:
+          type: string
+          format: uuid
+          nullable: true
+        room_number:
+          type: string
+          minLength: 1
+        floor:
+          type: integer
+          nullable: true
+        stay_type:
+          $ref: '#/components/schemas/StayType'
+        price:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        description:
+          type: string
+          nullable: true
+
+    UpdateRoomRequest:
+      type: object
+      properties:
+        room_type_id:
+          type: string
+          format: uuid
+          nullable: true
+        room_number:
+          type: string
+          minLength: 1
+        floor:
+          type: integer
+          nullable: true
+        stay_type:
+          $ref: '#/components/schemas/StayType'
+        price:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        description:
+          type: string
+          nullable: true
+
+    CreateBookingRequest:
+      type: object
+      required: [room_id, stay_type, guest_first_name, guest_last_name, guest_phone]
+      properties:
+        room_id:
+          type: string
+          format: uuid
+        stay_type:
+          $ref: '#/components/schemas/StayType'
+        guest_first_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        guest_last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        guest_phone:
+          type: string
+          pattern: '^[0-9]{9,10}$'
+        check_in_date:
+          type: string
+          format: date
+          nullable: true
+          description: บังคับเมื่อ stay_type = daily
+        check_out_date:
+          type: string
+          format: date
+          nullable: true
+          description: บังคับเมื่อ stay_type = daily และต้องมากกว่า check_in_date
+        move_in_date:
+          type: string
+          format: date
+          nullable: true
+          description: บังคับเมื่อ stay_type = monthly
+        note:
+          type: string
+          nullable: true
+
+    Booking:
+      type: object
+      required: [id, booking_code, room_id, branch_id, user_id, stay_type, status, total_amount, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        booking_code:
+          type: string
+          pattern: '^PT-[0-9]{6,}$'
+          description: ใช้แสดงผลและค้นหาเท่านั้น ห้ามใช้อ้างอิงใน URL
+        room_id:
+          type: string
+          format: uuid
+        branch_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        stay_type:
+          $ref: '#/components/schemas/StayType'
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        guest_first_name:
+          type: string
+        guest_last_name:
+          type: string
+        guest_phone:
+          type: string
+        check_in_date:
+          type: string
+          format: date
+          nullable: true
+        check_out_date:
+          type: string
+          format: date
+          nullable: true
+        move_in_date:
+          type: string
+          format: date
+          nullable: true
+        nights:
+          type: integer
+          nullable: true
+          description: check_out_date - check_in_date เมื่อ stay_type = daily
+        price_per_night:
+          type: number
+          nullable: true
+          description: ราคาที่คัดลอกไว้ตอนจอง ไม่เปลี่ยนตามราคาห้องภายหลัง
+        contract_fee:
+          type: number
+          nullable: true
+          description: ค่าทำสัญญาที่คัดลอกไว้ตอนจอง
+        total_amount:
+          type: number
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: มีค่าเมื่อสถานะเป็น pending_payment
+        appointment_at:
+          type: string
+          format: date-time
+          nullable: true
+        appointment_note:
+          type: string
+          nullable: true
+        payments:
+          type: array
+          description: ประวัติการแจ้งชำระเงินทุกครั้ง เรียงจากเก่าไปใหม่
+          items:
+            $ref: '#/components/schemas/PaymentAttempt'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PaymentAttempt:
+      type: object
+      required: [id, amount, transferred_at, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          description: ยอดที่ผู้ใช้แจ้ง อาจไม่ตรงกับ total_amount ให้ผู้ดูแลเป็นผู้ตัดสิน
+        transferred_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        reason:
+          type: string
+          nullable: true
+          description: เหตุผลที่ปฏิเสธ มีค่าเมื่อ status = rejected
+        created_at:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      required: [id, message, is_read, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+        message:
+          type: string
+        booking_code:
+          type: string
+          nullable: true
+        is_read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    ActivityLog:
+      type: object
+      required: [id, actor_name, actor_role, action, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: เป็น null เมื่อผู้ทำเป็นระบบ (booking.auto_expire)
+        actor_name:
+          type: string
+        actor_role:
+          $ref: '#/components/schemas/ActorRole'
+        branch_id:
+          type: string
+          format: uuid
+          nullable: true
+        action:
+          $ref: '#/components/schemas/ActivityAction'
+        entity_type:
+          type: string
+          nullable: true
+        entity_id:
+          type: string
+          nullable: true
+        ip:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateStaffRequest:
+      type: object
+      required: [email, password, first_name, last_name, phone, branch_id]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        phone:
+          type: string
+          pattern: '^[0-9]{9,10}$'
+        branch_id:
+          type: string
+          format: uuid
+
+    UpdateStaffRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        phone:
+          type: string
+          pattern: '^[0-9]{9,10}$'
+        branch_id:
+          type: string
+          format: uuid
+        is_active:
+          type: boolean
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
