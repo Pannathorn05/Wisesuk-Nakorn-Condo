@@ -26,6 +26,8 @@ import (
 type Server struct {
 	Config *config.Config
 	Auth   *auth.Manager
+	// Assets เก็บรูปสาขา/ห้องไว้ในฐานข้อมูล ชั้น route ใช้เสิร์ฟ GET /files/:assetID
+	Assets *storage.DBStore
 
 	Account   *account.Module
 	Branch    *branch.Module
@@ -39,19 +41,22 @@ func New(cfg *config.Config, pool *pgxpool.Pool, files *storage.LocalStore) *Ser
 	rec := audit.NewRecorder(db)
 	authMgr := auth.NewManager(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL, cfg.BcryptCost)
 
+	// รูปสาขา/ห้องเก็บในฐานข้อมูล ส่วนสลิปโอนเงินยังเป็นไฟล์บนดิสก์ (files)
+	assets := storage.NewDBStore(db, cfg.PublicBaseURL, cfg.MaxUploadBytes)
+
 	// ลำดับการสร้างคือลำดับการพึ่งพา:
 	//   branch  -> ไม่พึ่งใคร
 	//   account -> ใช้ branch ตรวจว่าสาขาที่จะผูกให้แอดมินมีจริง
 	//   room    -> ไม่พึ่งใคร
 	//   booking -> ใช้ room (ล็อก/ตรวจว่าง), branch (ค่าธรรมเนียม), account (แจ้งเตือน)
-	branchMod := branch.New(db, rec)
+	branchMod := branch.New(db, rec, assets)
 	accountMod := account.New(db, authMgr, rec, branchMod.Service)
-	roomMod := room.New(db, rec)
+	roomMod := room.New(db, rec, assets)
 	bookingMod := booking.New(db, roomMod.Service, branchMod.Service, accountMod.Service, rec, files)
 	reportingMod := reporting.New(db, roomMod.Service, bookingMod.Service)
 
 	return &Server{
-		Config: cfg, Auth: authMgr,
+		Config: cfg, Auth: authMgr, Assets: assets,
 		Account:   accountMod,
 		Branch:    branchMod,
 		Room:      roomMod,

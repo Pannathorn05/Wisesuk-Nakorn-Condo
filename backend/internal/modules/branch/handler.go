@@ -1,19 +1,23 @@
 package branch
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"backend/internal/httpx"
 	"backend/internal/middleware"
+	"backend/internal/storage"
 )
 
 type Handler struct {
-	svc *Service
+	svc   *Service
+	files *storage.DBStore
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, files *storage.DBStore) *Handler {
+	return &Handler{svc: svc, files: files}
 }
 
 // GET /api/v1/branches — สาขาในเครือทั้งหมด
@@ -136,9 +140,71 @@ func (h *Handler) ReplaceNearby(c *gin.Context) {
 	httpx.OK(c, places)
 }
 
+// POST /api/v1/admin/branch/cover?branch_id= — multipart: image
+//
+// อัปโหลดรูปปกสาขา ตัวไฟล์ถูกเก็บลงตาราง assets แล้วบันทึกเป็น URL /files/:id
+func (h *Handler) UploadCover(c *gin.Context) {
+	identity := middleware.MustIdentity(c)
+
+	branchID, err := httpx.QueryUUID(c, "branch_id")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	url, err := h.files.SaveFromRequest(c, "image")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	b, err := h.svc.SetCoverImage(c.Request.Context(), identity, branchID, url, middleware.ClientIP(c))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	httpx.OK(c, b)
+}
+
+// POST /api/v1/admin/branch/images/upload?branch_id= — multipart: image, caption, sort_order
+//
+// อัปโหลดรูปแกลเลอรีของสาขา ตัวไฟล์ถูกเก็บลงตาราง assets แล้วบันทึกเป็น URL /files/:id
+func (h *Handler) UploadImage(c *gin.Context) {
+	identity := middleware.MustIdentity(c)
+
+	branchID, err := httpx.QueryUUID(c, "branch_id")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	// ต้องบันทึกไฟล์ก่อน เพราะเป็นจุดที่พาร์ส multipart ให้อ่านฟิลด์ข้อความต่อได้
+	url, err := h.files.SaveFromRequest(c, "image")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	sortOrder := 0
+	if raw := c.PostForm("sort_order"); raw != "" {
+		if sortOrder, err = strconv.Atoi(raw); err != nil {
+			httpx.Error(c, httpx.BadRequest("sort_order ต้องเป็นจำนวนเต็ม"))
+			return
+		}
+	}
+
+	img, err := h.svc.AddImage(c.Request.Context(), identity, branchID, url,
+		c.PostForm("caption"), sortOrder, middleware.ClientIP(c))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	httpx.Created(c, img)
+}
+
 // POST /api/v1/admin/branch/images?branch_id= — JSON: image_url, caption, sort_order
 //
-// รูปถูกโฮสต์ไว้ที่บริการภายนอก ฝั่งเว็บอัปโหลดเองแล้วส่งมาแค่ URL
+// ใช้ผูกรูปที่โฮสต์ไว้ที่อื่นอยู่แล้ว ถ้าจะอัปโหลดไฟล์ให้ใช้ /branch/images/upload
 func (h *Handler) AddImage(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 

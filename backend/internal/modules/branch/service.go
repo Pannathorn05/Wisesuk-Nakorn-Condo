@@ -3,6 +3,7 @@ package branch
 import (
 	"context"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -186,6 +187,25 @@ func (s *Service) ReplaceNearby(ctx context.Context, identity middleware.Identit
 	return places, access.MapErr(err)
 }
 
+// SetCoverImage ใช้กับปุ่มเปลี่ยนรูปปกสาขา ซึ่งอัปโหลดรูปอย่างเดียวไม่ได้แก้ฟิลด์อื่น
+func (s *Service) SetCoverImage(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, url, ip string) (*Branch, error) {
+	id, err := access.RequireBranch(identity, branchID)
+	if err != nil {
+		return nil, err
+	}
+	v := validate.New()
+	url = v.ImageURL("cover_image_url", url, true)
+	if err := v.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.UpdateCoverImage(ctx, id, url); err != nil {
+		return nil, access.MapErr(err)
+	}
+	s.record(ctx, identity, "branch.update_cover", "branch", id.String(), nil, ip)
+	return s.Get(ctx, id)
+}
+
 func (s *Service) AddImage(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, url, caption string, sortOrder int, ip string) (*BranchImage, error) {
 	id, err := access.RequireBranch(identity, branchID)
 	if err != nil {
@@ -194,6 +214,9 @@ func (s *Service) AddImage(ctx context.Context, identity middleware.Identity, br
 	v := validate.New()
 	url = v.ImageURL("image_url", url, true)
 	v.MaxLen("caption", caption, 200)
+	// ฟิลด์ข้อความใน multipart ไม่ได้ผ่าน decoder ของ JSON จึงยังเป็นไบต์ดิบ
+	// ถ้าไม่ใช่ UTF-8 (เช่น client ส่งมาเป็น CP874) ต้องบอกให้รู้ ไม่ใช่ปล่อยให้ INSERT พังเป็น 500
+	v.Check(utf8.ValidString(caption), "caption", "คำบรรยายต้องเป็นข้อความ UTF-8")
 	if err := v.Err(); err != nil {
 		return nil, err
 	}

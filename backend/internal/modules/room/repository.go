@@ -223,6 +223,20 @@ func (r *Repository) Update(ctx context.Context, id, branchID uuid.UUID, p SaveP
 	return r.GetByID(ctx, id)
 }
 
+// UpdateImage แยกจาก Update เพราะการเปลี่ยนรูปห้องไม่ควรบังคับให้ส่งรายละเอียดห้องมาครบทั้งชุด
+func (r *Repository) UpdateImage(ctx context.Context, id, branchID uuid.UUID, url string) (*Room, error) {
+	tag, err := r.db.Executor(ctx).Exec(ctx,
+		`UPDATE rooms SET image_url = $3, updated_at = now() WHERE id = $1 AND branch_id = $2`,
+		id, branchID, url)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, database.ErrNotFound
+	}
+	return r.GetByID(ctx, id)
+}
+
 // UpdateStatus ใช้กับปุ่มอัปเดตสถานะห้องแบบ real-time (ว่าง / มีผู้เช่า / ปิดปรับปรุง)
 func (r *Repository) UpdateStatus(ctx context.Context, id, branchID uuid.UUID, status RoomStatus) (*Room, error) {
 	tag, err := r.db.Executor(ctx).Exec(ctx,

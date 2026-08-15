@@ -2,6 +2,7 @@ package booking
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"backend/internal/shared/access"
 	"backend/internal/shared/audit"
 	"backend/internal/shared/types"
+	"backend/internal/timex"
 	"backend/internal/validate"
 )
 
@@ -47,8 +49,25 @@ func NewService(repo *Repository, tx *database.TxManager, rooms Rooms, branches 
 	return &Service{repo: repo, tx: tx, rooms: rooms, branches: branches, notifier: notifier, audit: rec}
 }
 
-var errRoomTaken = httpx.NewError(409, "room_unavailable",
-	"ขออภัย ห้องนี้ถูกจองไปแล้วในช่วงวันที่ที่เลือก กรุณาเลือกห้องหรือวันที่อื่น")
+var errRoomTaken = httpx.ErrRoomUnavailable
+
+// hideCrossBranch เปลี่ยน 403 เป็น 404 สำหรับการเข้าถึงใบจองรายชิ้น
+//
+// การระบุ ?branch_id= ของสาขาอื่นตอบ 403 ได้ เพราะรายชื่อสาขาเป็นข้อมูลสาธารณะอยู่แล้ว
+// แต่การเปิดใบจองด้วยรหัสต้องไม่ยืนยันว่ารหัสนั้นมีจริง ไม่งั้นไล่เดารหัสได้ (AC-4)
+func hideCrossBranch(err error) error {
+	if errors.Is(err, httpx.ErrForbidden) {
+		return httpx.ErrNotFound
+	}
+	return err
+}
+
+// เหตุผลที่เปลี่ยนสถานะการจองไม่ได้ ประกาศไว้ที่เดียวแทนการเขียนซ้ำตรงจุดที่ใช้
+var (
+	errPaymentNotAllowed = httpx.InvalidState("รายการจองนี้ไม่อยู่ในสถานะที่แจ้งชำระเงินได้")
+	errCancelNeedsAdmin  = httpx.InvalidState("รายการจองนี้ไม่สามารถยกเลิกเองได้ กรุณาติดต่อผู้ดูแลระบบของสาขา")
+	errNotAwaitingReview = httpx.InvalidState("รายการจองนี้ไม่ได้อยู่ในสถานะรอตรวจสอบ")
+)
 
 type CreateInput struct {
 	RoomID   uuid.UUID `json:"room_id"`
@@ -99,13 +118,13 @@ func (s *Service) Create(ctx context.Context, identity middleware.Identity, in C
 				nights = &n
 			}
 		}
-		if checkIn != nil && checkIn.Before(startOfToday()) {
+		if checkIn != nil && timex.IsPastDate(*checkIn) {
 			v.Check(false, "check_in_date", "วันเข้าพักต้องไม่เป็นวันที่ผ่านมาแล้ว")
 		}
 	case types.StayMonthly:
 		moveIn = parseDate(v, "move_in_date", in.MoveInDate, true)
 		contractDate = parseDate(v, "contract_date", in.ContractDate, false)
-		if moveIn != nil && moveIn.Before(startOfToday()) {
+		if moveIn != nil && timex.IsPastDate(*moveIn) {
 			v.Check(false, "move_in_date", "วันที่ต้องการเข้าอยู่ต้องไม่เป็นวันที่ผ่านมาแล้ว")
 		}
 	}
@@ -240,9 +259,8 @@ func (s *Service) SubmitPayment(ctx context.Context, identity middleware.Identit
 	if b.UserID != identity.UserID {
 		return nil, httpx.ErrNotFound
 	}
-	if b.Status != BookingPendingPayment && b.Status != BookingRejected {
-		return nil, httpx.NewError(409, "invalid_state",
-			"รายการจองนี้ไม่อยู่ในสถานะที่แจ้งชำระเงินได้")
+	if b.Status != BookingPendingPayment {
+		return nil, errPaymentNotAllowed
 	}
 
 	v := validate.New()
@@ -266,7 +284,7 @@ func (s *Service) SubmitPayment(ctx context.Context, identity middleware.Identit
 			return access.MapErr(err)
 		}
 		var err error
-		updated, err = s.repo.UpdateStatus(ctx, b.ID, nil, BookingAwaitingReview, nil, "")
+		updated, err = s.repo.UpdateStatus(ctx, b.ID, nil, BookingAwaitingReview, nil)
 		return access.MapErr(err)
 	})
 	if err != nil {
@@ -299,8 +317,7 @@ func (s *Service) Cancel(ctx context.Context, identity middleware.Identity, book
 	}
 	// สมาชิกยกเลิกได้เฉพาะก่อนได้รับอนุมัติ หลังจากนั้นต้องให้แอดมินจัดการ
 	if identity.Role == types.RoleMember && b.Status != BookingPendingPayment {
-		return nil, httpx.NewError(409, "invalid_state",
-			"รายการจองนี้ไม่สามารถยกเลิกเองได้ กรุณาติดต่อผู้ดูแลระบบของสาขา")
+		return nil, errCancelNeedsAdmin
 	}
 
 	// ยกเลิกใบที่ถือห้องอยู่แล้วห้องต้องกลับมาปล่อยเช่าได้
@@ -308,7 +325,7 @@ func (s *Service) Cancel(ctx context.Context, identity middleware.Identity, book
 	var updated *Booking
 	err = s.tx.WithTx(ctx, func(ctx context.Context) error {
 		var err error
-		updated, err = s.repo.UpdateStatus(ctx, b.ID, nil, BookingCancelled, nil, "")
+		updated, err = s.repo.UpdateStatus(ctx, b.ID, nil, BookingCancelled, nil)
 		if err != nil {
 			return access.MapErr(err)
 		}
@@ -355,10 +372,12 @@ func (s *Service) Review(ctx context.Context, identity middleware.Identity, book
 	}
 	branchID, err := access.RequireBranch(identity, &b.BranchID)
 	if err != nil {
-		return nil, err
+		// ใบจองเป็นทรัพยากรรายชิ้น แอดมินสาขาอื่นต้องได้ 404 ไม่ใช่ 403
+		// เพื่อไม่ให้ยืนยันว่ารหัสการจองนั้นมีอยู่จริง (AC-4, AC-10)
+		return nil, hideCrossBranch(err)
 	}
 	if b.Status != BookingAwaitingReview {
-		return nil, httpx.NewError(409, "invalid_state", "รายการจองนี้ไม่ได้อยู่ในสถานะรอตรวจสอบ")
+		return nil, errNotAwaitingReview
 	}
 	if !approve && reason == "" {
 		return nil, httpx.ValidationFailed(map[string]string{
@@ -366,7 +385,10 @@ func (s *Service) Review(ctx context.Context, identity middleware.Identity, book
 		})
 	}
 
-	newStatus, paymentStatus := BookingRejected, PaymentRejected
+	// ปฏิเสธแล้วใบกลับไปรอชำระเงินใหม่ ไม่ใช่จบที่สถานะ "ถูกปฏิเสธ"
+	// ห้องจึงยังถูกล็อกไว้กับใบนี้ สมาชิกแนบสลิปใหม่ได้โดยไม่มีใครแทรกเข้ามาจองตัดหน้า (AC-8, AC-10)
+	// ส่วนเหตุผลที่ปฏิเสธถูกเก็บไว้ที่แถว payment ของครั้งนั้น
+	newStatus, paymentStatus := BookingPendingPayment, PaymentRejected
 	if approve {
 		newStatus, paymentStatus = BookingApproved, PaymentApproved
 	}
@@ -379,7 +401,7 @@ func (s *Service) Review(ctx context.Context, identity middleware.Identity, book
 
 		reviewer := identity.UserID
 		var err error
-		updated, err = s.repo.UpdateStatus(ctx, b.ID, &branchID, newStatus, &reviewer, reason)
+		updated, err = s.repo.UpdateStatus(ctx, b.ID, &branchID, newStatus, &reviewer)
 		if err != nil {
 			return access.MapErr(err)
 		}
@@ -501,9 +523,4 @@ func parseDate(v *validate.Validator, field, raw string, required bool) *time.Ti
 		return nil
 	}
 	return &t
-}
-
-func startOfToday() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 }

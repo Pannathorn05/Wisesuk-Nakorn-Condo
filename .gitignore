@@ -1,0 +1,13 @@
+# Prototype — ไฟล์ PDF ใหญ่เกินลิมิต 100 MB ของ GitHub เก็บไว้ในเครื่อง/แชร์ทางอื่น
+Prototype/
+
+# Claude Code config เฉพาะเครื่อง
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.backend/docker/
+.backend/.env/

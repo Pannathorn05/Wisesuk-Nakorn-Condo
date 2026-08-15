@@ -55,7 +55,11 @@ func (h *Handler) ListMine(c *gin.Context) {
 		return
 	}
 
-	page, pageSize, offset := httpx.Pagination(c)
+	page, pageSize, offset, err := httpx.Pagination(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
 	bookings, total, err := h.svc.ListMine(c.Request.Context(), identity, status, stayType, pageSize, offset)
 	if err != nil {
 		httpx.Error(c, err)
@@ -174,7 +178,11 @@ func (h *Handler) ListForAdmin(c *gin.Context) {
 		return
 	}
 
-	page, pageSize, offset := httpx.Pagination(c)
+	page, pageSize, offset, err := httpx.Pagination(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
 	bookings, total, err := h.svc.ListForAdmin(c.Request.Context(), identity, branchID, status, stayType,
 		httpx.QueryString(c, "search"), pageSize, offset)
 	if err != nil {
@@ -263,7 +271,11 @@ func (h *Handler) ListByMember(c *gin.Context) {
 		return
 	}
 
-	page, pageSize, offset := httpx.Pagination(c)
+	page, pageSize, offset, err := httpx.Pagination(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
 	bookings, total, err := h.svc.ListByMember(c.Request.Context(), identity, memberID, pageSize, offset)
 	if err != nil {
 		httpx.Error(c, err)

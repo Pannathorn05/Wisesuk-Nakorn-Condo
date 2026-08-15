@@ -22,6 +22,29 @@ var allowedTypes = map[string]string{
 	"image/webp": ".webp",
 }
 
+// sniffType ตรวจชนิดไฟล์จากเนื้อไฟล์จริง ไม่เชื่อ Content-Type ที่ client ส่งมา
+// แล้ว seek กลับต้นไฟล์ให้ผู้เรียกอ่านเนื้อไฟล์ต่อได้ครบ
+func sniffType(file multipart.File) (contentType, ext string, err error) {
+	sniff := make([]byte, 512)
+	n, err := file.Read(sniff)
+	if err != nil && err != io.EOF {
+		return "", "", httpx.BadRequest("อ่านไฟล์ไม่สำเร็จ").Wrap(err)
+	}
+	contentType = http.DetectContentType(sniff[:n])
+	ext, ok := allowedTypes[contentType]
+	if !ok {
+		return "", "", httpx.BadRequest("รองรับเฉพาะไฟล์รูปภาพ JPG, PNG หรือ WEBP เท่านั้น")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", "", httpx.ErrInternal.Wrap(err)
+	}
+	return contentType, ext, nil
+}
+
+func errTooLarge(maxBytes int64) error {
+	return httpx.BadRequest(fmt.Sprintf("ไฟล์ต้องมีขนาดไม่เกิน %d MB", maxBytes/1024/1024))
+}
+
 // LocalStore เก็บไฟล์อัปโหลดลงดิสก์ แล้วเสิร์ฟผ่าน /uploads/*
 type LocalStore struct {
 	baseDir  string
@@ -43,22 +66,12 @@ func (s *LocalStore) MaxBytes() int64 { return s.maxBytes }
 // folder ถูกกำหนดจากโค้ดเท่านั้น (ไม่รับจาก client) จึงไม่มีช่องทาง path traversal
 func (s *LocalStore) Save(folder string, file multipart.File, header *multipart.FileHeader) (string, error) {
 	if header.Size > s.maxBytes {
-		return "", httpx.BadRequest(fmt.Sprintf("ไฟล์ต้องมีขนาดไม่เกิน %d MB", s.maxBytes/1024/1024))
+		return "", errTooLarge(s.maxBytes)
 	}
 
-	// ตรวจชนิดไฟล์จากเนื้อไฟล์จริง ไม่เชื่อ Content-Type ที่ client ส่งมา
-	sniff := make([]byte, 512)
-	n, err := file.Read(sniff)
-	if err != nil && err != io.EOF {
-		return "", httpx.BadRequest("อ่านไฟล์ไม่สำเร็จ").Wrap(err)
-	}
-	contentType := http.DetectContentType(sniff[:n])
-	ext, ok := allowedTypes[contentType]
-	if !ok {
-		return "", httpx.BadRequest("รองรับเฉพาะไฟล์รูปภาพ JPG, PNG หรือ WEBP เท่านั้น")
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return "", httpx.ErrInternal.Wrap(err)
+	_, ext, err := sniffType(file)
+	if err != nil {
+		return "", err
 	}
 
 	dir := filepath.Join(s.baseDir, folder, time.Now().Format("2006/01"))

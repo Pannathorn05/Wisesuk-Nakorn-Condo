@@ -6,14 +6,42 @@ import (
 	"backend/internal/httpx"
 	"backend/internal/middleware"
 	"backend/internal/shared/types"
+	"backend/internal/storage"
 )
 
 type Handler struct {
-	svc *Service
+	svc   *Service
+	files *storage.DBStore
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, files *storage.DBStore) *Handler {
+	return &Handler{svc: svc, files: files}
+}
+
+// POST /api/v1/admin/rooms/:roomID/image — multipart: image
+//
+// อัปโหลดรูปห้อง ตัวไฟล์ถูกเก็บลงตาราง assets แล้วบันทึกเป็น URL /files/:id
+func (h *Handler) UploadImage(c *gin.Context) {
+	identity := middleware.MustIdentity(c)
+
+	roomID, err := httpx.ParseUUID(c.Param("roomID"))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	url, err := h.files.SaveFromRequest(c, "image")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	rm, err := h.svc.SetImage(c.Request.Context(), identity, roomID, url, middleware.ClientIP(c))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	httpx.OK(c, rm)
 }
 
 // searchInputFrom อ่านตัวกรองทั้งหมดของหน้าค้นหาห้องพักจาก query string
@@ -82,7 +110,11 @@ func (h *Handler) Search(c *gin.Context) {
 		httpx.Error(c, err)
 		return
 	}
-	page, pageSize, offset := httpx.Pagination(c)
+	page, pageSize, offset, err := httpx.Pagination(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
 	in.Limit, in.Offset = pageSize, offset
 
 	rooms, total, err := h.svc.Search(c.Request.Context(), in)
@@ -119,7 +151,11 @@ func (h *Handler) ListForAdmin(c *gin.Context) {
 		httpx.Error(c, err)
 		return
 	}
-	page, pageSize, offset := httpx.Pagination(c)
+	page, pageSize, offset, err := httpx.Pagination(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
 	in.Limit, in.Offset = pageSize, offset
 
 	rooms, total, err := h.svc.ListForAdmin(c.Request.Context(), identity, in)

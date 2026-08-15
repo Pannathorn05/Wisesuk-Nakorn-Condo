@@ -124,6 +124,19 @@ func (r *Repository) Update(ctx context.Context, id uuid.UUID, p UpdateParams) e
 
 // ---------------------------------------------------------------- images
 
+// UpdateCoverImage แยกจาก Update เพราะการเปลี่ยนรูปปกไม่ควรบังคับให้ส่งรายละเอียดสาขามาครบทั้งชุด
+func (r *Repository) UpdateCoverImage(ctx context.Context, id uuid.UUID, url string) error {
+	tag, err := r.db.Executor(ctx).Exec(ctx,
+		`UPDATE branches SET cover_image_url = $2, updated_at = now() WHERE id = $1`, id, url)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return database.ErrNotFound
+	}
+	return nil
+}
+
 func (r *Repository) ListImages(ctx context.Context, branchID uuid.UUID) ([]BranchImage, error) {
 	rows, err := r.db.Executor(ctx).Query(ctx,
 		`SELECT id, branch_id, image_url, caption, sort_order

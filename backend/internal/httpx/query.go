@@ -8,6 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"backend/internal/timex"
 )
 
 // ตัวช่วยอ่าน query string ที่ทุก module ใช้ร่วมกัน
@@ -73,7 +75,7 @@ func FormValue(c *gin.Context, key string) (string, error) {
 // ถ้าใช้ time.Parse ตรง ๆ Go จะถือว่าเป็น UTC ทำให้เวลาบ่ายกลายเป็นเวลาอนาคต
 // แล้วโดน validation ตีกลับทั้งที่ผู้ใช้กรอกถูก
 //
-// (container ตั้ง TZ=Asia/Bangkok ไว้แล้วใน Dockerfile จึงตรงกับผู้ใช้)
+// ใช้เขตเวลาไทยจาก timex เสมอ ไม่พึ่ง TZ ของเครื่องที่รันอยู่ (AC-22)
 func ParseFlexibleTime(raw string) (time.Time, error) {
 	raw = strings.TrimSpace(raw)
 
@@ -91,7 +93,7 @@ func ParseFlexibleTime(raw string) (time.Time, error) {
 	}
 	var lastErr error
 	for _, layout := range localLayouts {
-		t, err := time.ParseInLocation(layout, raw, time.Local)
+		t, err := time.ParseInLocation(layout, raw, timex.Location())
 		if err == nil {
 			return t, nil
 		}

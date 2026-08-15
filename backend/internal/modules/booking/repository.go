@@ -21,7 +21,7 @@ const columns = `
 	bk.emergency_phone, bk.emergency_relation,
 	bk.check_in_date, bk.check_out_date, bk.nights,
 	bk.move_in_date, bk.contract_date, bk.appointment_at, bk.appointment_note,
-	bk.total_amount, bk.status, bk.reject_reason, bk.reviewed_by, bk.reviewed_at,
+	bk.total_amount, bk.status, bk.reviewed_by, bk.reviewed_at,
 	bk.cancelled_at, bk.created_at, bk.updated_at,
 	COALESCE(b.name, ''), COALESCE(r.room_number, ''),
 	COALESCE(u.first_name || ' ' || u.last_name, ''), COALESCE(u.email, '')`
@@ -40,7 +40,7 @@ func scan(row interface{ Scan(...any) error }) (*Booking, error) {
 		&b.EmergencyPhone, &b.EmergencyRelation,
 		&b.CheckInDate, &b.CheckOutDate, &b.Nights,
 		&b.MoveInDate, &b.ContractDate, &b.AppointmentAt, &b.AppointmentNote,
-		&b.TotalAmount, &b.Status, &b.RejectReason, &b.ReviewedBy, &b.ReviewedAt,
+		&b.TotalAmount, &b.Status, &b.ReviewedBy, &b.ReviewedAt,
 		&b.CancelledAt, &b.CreatedAt, &b.UpdatedAt,
 		&b.BranchName, &b.RoomNumber, &b.MemberName, &b.MemberEmail,
 	)
@@ -161,21 +161,20 @@ func (r *Repository) List(ctx context.Context, p ListParams) ([]Booking, int, er
 
 // UpdateStatus เปลี่ยนสถานะการจอง โดยยืนยัน branch_id เพื่อกันแอดมินข้ามสาขา
 // branchID = nil หมายถึงข้ามการตรวจ (super admin หรือเจ้าของการจองเอง)
-func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, branchID *uuid.UUID, status BookingStatus, reviewerID *uuid.UUID, reason string) (*Booking, error) {
+func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, branchID *uuid.UUID, status BookingStatus, reviewerID *uuid.UUID) (*Booking, error) {
 	// $3 ต้อง cast เป็น booking_status ให้ชัดทุกจุด เพราะถูกใช้ทั้งเป็นค่าที่กำหนดให้คอลัมน์
 	// และเป็นค่าที่นำไปเปรียบเทียบ ถ้าไม่ cast PostgreSQL จะสรุปชนิดไม่ตรงกัน
 	// แล้วตอบ "inconsistent types deduced for parameter $3" (SQLSTATE 42P08)
 	const q = `
 		UPDATE bookings SET
-			status        = $3::booking_status,
-			reject_reason = $4,
-			reviewed_by   = COALESCE($5, reviewed_by),
-			reviewed_at   = CASE WHEN $5::uuid IS NULL THEN reviewed_at ELSE now() END,
-			cancelled_at  = CASE WHEN $3::booking_status = 'cancelled' THEN now() ELSE cancelled_at END,
-			updated_at    = now()
+			status       = $3::booking_status,
+			reviewed_by  = COALESCE($4, reviewed_by),
+			reviewed_at  = CASE WHEN $4::uuid IS NULL THEN reviewed_at ELSE now() END,
+			cancelled_at = CASE WHEN $3::booking_status = 'cancelled' THEN now() ELSE cancelled_at END,
+			updated_at   = now()
 		WHERE id = $1
 		  AND ($2::uuid IS NULL OR branch_id = $2)`
-	tag, err := r.db.Executor(ctx).Exec(ctx, q, id, branchID, status, reason, reviewerID)
+	tag, err := r.db.Executor(ctx).Exec(ctx, q, id, branchID, status, reviewerID)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,11 @@
+extends:
+  - recommended
+rules:
+  # MVP v1 ไม่มี authentication (ระบุใน SPEC ส่วน Out of scope)
+  security-defined: off
+  # API ภายใน workshop ไม่ต้องประกาศ license
+  info-license: off
+  # localhost คือ dev server จริงของโปรเจกต์นี้
+  no-server-example.com: off
+  # /health และ GET /books ไม่มี 4XX ตาม contract
+  operation-4xx-response: off

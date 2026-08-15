@@ -5,6 +5,7 @@ import (
 
 	"backend/internal/database"
 	"backend/internal/shared/audit"
+	"backend/internal/storage"
 )
 
 // Module รวมทุกชั้นของเรื่อง "ห้องพัก": ค้นหา, ประเภทห้อง,
@@ -15,10 +16,10 @@ type Module struct {
 	Handler *Handler
 }
 
-func New(db *database.TxManager, rec *audit.Recorder) *Module {
+func New(db *database.TxManager, rec *audit.Recorder, files *storage.DBStore) *Module {
 	repo := NewRepository(db)
 	svc := NewService(repo, rec)
-	return &Module{Repo: repo, Service: svc, Handler: NewHandler(svc)}
+	return &Module{Repo: repo, Service: svc, Handler: NewHandler(svc, files)}
 }
 
 // PublicRoutes — ไม่ต้องเข้าสู่ระบบ
@@ -33,6 +34,7 @@ func (m *Module) AdminRoutes(r gin.IRoutes) {
 	r.GET("/rooms", m.Handler.ListForAdmin)
 	r.POST("/rooms", m.Handler.Create)
 	r.PUT("/rooms/:roomID", m.Handler.Update)
+	r.POST("/rooms/:roomID/image", m.Handler.UploadImage)
 	r.PATCH("/rooms/:roomID/status", m.Handler.UpdateStatus)
 	r.DELETE("/rooms/:roomID", m.Handler.Delete)
 }

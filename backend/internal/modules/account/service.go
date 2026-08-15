@@ -36,7 +36,7 @@ func NewService(repo *Repository, sec *auth.Manager, rec *audit.Recorder, branch
 
 // errInvalidCredentials ใช้ข้อความเดียวกันทั้งกรณีอีเมลผิดและรหัสผ่านผิด
 // เพื่อไม่ให้ผู้โจมตีเดาได้ว่าอีเมลใดมีอยู่ในระบบ
-var errInvalidCredentials = httpx.NewError(401, "invalid_credentials", "อีเมลหรือรหัสผ่านไม่ถูกต้อง")
+var errInvalidCredentials = httpx.ErrInvalidCredentials
 
 // ---------------------------------------------------------------- auth
 
@@ -106,7 +106,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput, ip string) (*TokenPa
 		return nil, errInvalidCredentials
 	}
 	if !user.IsActive {
-		return nil, httpx.NewError(403, "account_disabled", "บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ")
+		return nil, httpx.ErrAccountDisabled
 	}
 
 	_ = s.repo.TouchLastLogin(ctx, user.ID)

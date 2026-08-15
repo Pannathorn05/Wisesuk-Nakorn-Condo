@@ -171,7 +171,11 @@ func (h *Handler) MarkNotificationsRead(c *gin.Context) {
 
 // GET /api/v1/admin/members?search=
 func (h *Handler) ListMembers(c *gin.Context) {
-	page, pageSize, offset := httpx.Pagination(c)
+	page, pageSize, offset, err := httpx.Pagination(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
 
 	members, total, err := h.svc.ListMembers(c.Request.Context(), httpx.QueryString(c, "search"), pageSize, offset)
 	if err != nil {

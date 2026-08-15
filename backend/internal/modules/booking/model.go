@@ -11,19 +11,18 @@ import (
 // BookingStatus คือสถานะการจอง ไล่ตามลำดับที่เกิดขึ้นจริงในระบบ
 type BookingStatus string
 
+// มี 4 ค่าเท่านั้น — ไม่มี "rejected" เพราะการปฏิเสธจะเด้งใบกลับไป pending_payment
+// เพื่อให้ห้องยังถูกล็อกไว้กับใบเดิม ไม่หลุดไปให้คนอื่นจองซ้อน (AC-8, AC-10)
 const (
 	BookingPendingPayment BookingStatus = "pending_payment" // จองแล้ว รอแจ้งชำระเงิน
 	BookingAwaitingReview BookingStatus = "awaiting_review" // ส่งสลิปแล้ว รอตรวจสอบ
 	BookingApproved       BookingStatus = "approved"        // อนุมัติแล้ว
-	BookingRejected       BookingStatus = "rejected"        // ปฏิเสธ
 	BookingCancelled      BookingStatus = "cancelled"       // ยกเลิก
-	BookingCompleted      BookingStatus = "completed"       // เข้าพักครบแล้ว
 )
 
 func (s BookingStatus) Valid() bool {
 	switch s {
-	case BookingPendingPayment, BookingAwaitingReview, BookingApproved,
-		BookingRejected, BookingCancelled, BookingCompleted:
+	case BookingPendingPayment, BookingAwaitingReview, BookingApproved, BookingCancelled:
 		return true
 	}
 	return false
@@ -63,14 +62,14 @@ type Booking struct {
 	AppointmentAt   *time.Time `json:"appointment_at,omitempty"` // วันนัดหมายที่แอดมินกำหนด
 	AppointmentNote string     `json:"appointment_note"`
 
-	TotalAmount  float64       `json:"total_amount"`
-	Status       BookingStatus `json:"status"`
-	RejectReason string        `json:"reject_reason"`
-	ReviewedBy   *uuid.UUID    `json:"reviewed_by,omitempty"`
-	ReviewedAt   *time.Time    `json:"reviewed_at,omitempty"`
-	CancelledAt  *time.Time    `json:"cancelled_at,omitempty"`
-	CreatedAt    time.Time     `json:"created_at"`
-	UpdatedAt    time.Time     `json:"updated_at"`
+	TotalAmount float64       `json:"total_amount"`
+	Status      BookingStatus `json:"status"`
+	// เหตุผลที่ถูกปฏิเสธอยู่ที่ Payment.RejectReason ของการแจ้งชำระเงินครั้งนั้น ไม่ใช่ที่ใบจอง
+	ReviewedBy  *uuid.UUID `json:"reviewed_by,omitempty"`
+	ReviewedAt  *time.Time `json:"reviewed_at,omitempty"`
+	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 
 	// ฟิลด์จากการ join ไว้แสดงในตาราง โดยไม่ต้องยิง API ซ้ำ
 	BranchName    string   `json:"branch_name,omitempty"`

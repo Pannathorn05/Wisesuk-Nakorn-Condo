@@ -49,13 +49,15 @@ func New(s *server.Server) http.Handler {
 		httpx.Error(c, httpx.ErrNotFound)
 	})
 	r.NoMethod(func(c *gin.Context) {
-		httpx.Error(c, httpx.NewError(http.StatusMethodNotAllowed,
-			"method_not_allowed", "ไม่รองรับ HTTP method นี้"))
+		httpx.Error(c, httpx.ErrMethodNotAllowed)
 	})
 
 	r.GET("/health", func(c *gin.Context) {
 		httpx.JSON(c, http.StatusOK, gin.H{"status": "healthy", "time": time.Now().UTC()})
 	})
+
+	// รูปสาขา/ห้องที่เก็บไว้ในฐานข้อมูล เสิร์ฟแบบ read-only
+	r.GET("/files/:assetID", s.Assets.Serve)
 
 	// ไฟล์ที่อัปโหลด (สลิป) เสิร์ฟแบบ read-only
 	r.GET("/uploads/*filepath", serveUpload(s.Config.UploadDir))

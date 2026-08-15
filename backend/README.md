@@ -120,7 +120,7 @@ backend/
 │   ├── middleware/           ตรวจ token, จำกัดสิทธิ์, logging, recover
 │   ├── config/               อ่าน env + ตรวจค่าที่จำเป็น
 │   ├── httpx/                รูปแบบ response/error + ตัวช่วยอ่าน query
-│   ├── storage/              รับไฟล์อัปโหลด (สลิปโอนเงินเท่านั้น)
+│   ├── storage/              รับไฟล์อัปโหลด — รูปเก็บในฐานข้อมูล, สลิปเก็บลงดิสก์
 │   └── validate/             ตรวจข้อมูลเข้า พร้อมข้อความไทยรายฟิลด์
 │
 ├── docker/pgadmin/           ตั้งค่าเซิร์ฟเวอร์ให้ pgAdmin อัตโนมัติ
@@ -264,18 +264,29 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 | PUT | `/admin/branch` | แก้ไขรายละเอียดสาขา |
 | PUT | `/admin/branch/amenities` | แก้ไขสิ่งอำนวยความสะดวก |
 | PUT | `/admin/branch/nearby` | แก้ไขสถานที่ใกล้เคียง |
-| POST | `/admin/branch/images` | เพิ่มรูปสาขา (JSON: `image_url`, `caption`, `sort_order`) |
+| POST | `/admin/branch/cover` | อัปโหลดรูปปกสาขา (multipart: `image`) |
+| POST | `/admin/branch/images/upload` | อัปโหลดรูปสาขา (multipart: `image`, `caption`, `sort_order`) |
+| POST | `/admin/branch/images` | เพิ่มรูปสาขาจาก URL ภายนอก (JSON: `image_url`, `caption`, `sort_order`) |
 | DELETE | `/admin/branch/images/{id}` | ลบรูปสาขา |
+| POST | `/admin/rooms/{id}/image` | อัปโหลดรูปห้อง (multipart: `image`) |
 | GET | `/admin/members` | รายชื่อสมาชิก (ค้นด้วย `search`) |
 | GET | `/admin/members/{id}/bookings` | ประวัติการจองของสมาชิกรายคน |
 | GET | `/admin/activity-logs` | ประวัติการใช้งาน |
 
-**เรื่องรูปภาพ:** รูปห้องพักและรูปสาขาไม่ได้อัปโหลดผ่าน backend — ฝั่งเว็บอัปโหลดไปที่บริการ
-ภายนอก (Cloudinary / imgbb / ฯลฯ) เองแล้วส่งมาแค่ `image_url` / `cover_image_url` เป็น JSON
-backend ตรวจแค่ว่าเป็น URL แบบ `http`/`https` ที่มี host จริง (กัน `javascript:` / `data:`)
+**เรื่องรูปภาพ:** รูปสาขาและรูปห้อง**เก็บเป็นเนื้อไฟล์ในฐานข้อมูล** (ตาราง `assets`) สำรองข้อมูล
+ด้วย dump ชุดเดียวจึงได้ทั้งข้อมูลและรูป ไม่ต้องดูแล volume แยกต่างหาก อัปโหลดผ่าน endpoint
+ข้างบน (multipart ช่อง `image` — JPG/PNG/WEBP ไม่เกิน `MAX_UPLOAD_MB`) แล้วระบบบันทึก
+`image_url` / `cover_image_url` เป็น `{PUBLIC_BASE_URL}/files/{assetID}` ให้เอง
 
-ไฟล์เดียวที่ backend รับและเก็บเองคือ **สลิปโอนเงิน** เพราะเป็นหลักฐานการเงินที่ต้องคุมเอง
-ว่ามีจริงและไม่หาย
+- `GET /files/{assetID}` เปิดสาธารณะ ใช้เป็น `src` ของ `<img>` ได้ตรง ๆ ตอบ `ETag` และ
+  `Cache-Control: immutable` เพราะเนื้อไฟล์ผูกกับ id ตายตัว
+- ชนิดไฟล์ถูกตรวจจากเนื้อไฟล์จริง ไม่เชื่อนามสกุลหรือ `Content-Type` ที่ client ส่งมา
+- ไฟล์เนื้อเดียวกันที่อัปโหลดซ้ำใช้แถวเดิม (dedup ด้วย sha256) ไม่เก็บ blob ซ้ำ
+- `POST /admin/branch/images` แบบ JSON ยังใช้ได้ สำหรับรูปที่โฮสต์ไว้ที่อื่นอยู่แล้ว —
+  ตรวจแค่ว่าเป็น URL แบบ `http`/`https` ที่มี host จริง (กัน `javascript:` / `data:`)
+
+**สลิปโอนเงิน** ยังเก็บเป็นไฟล์บนดิสก์ที่ `UPLOAD_DIR` และเสิร์ฟผ่าน `/uploads/*` เหมือนเดิม
+เพราะเป็นหลักฐานการเงินที่ต้องคุมเองว่ามีจริงและไม่หาย
 
 ### หัวหน้าผู้ดูแลระบบ (Super Admin) เท่านั้น
 

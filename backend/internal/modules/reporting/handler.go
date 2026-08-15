@@ -48,7 +48,11 @@ func (h *Handler) ListActivityLogs(c *gin.Context) {
 		f.ActorRole = &role
 	}
 
-	page, pageSize, offset := httpx.Pagination(c)
+	page, pageSize, offset, err := httpx.Pagination(c)
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
 	f.Limit, f.Offset = pageSize, offset
 
 	logs, total, err := h.svc.ActivityLogs(c.Request.Context(), identity, f)

@@ -218,6 +218,29 @@ func (s *Service) Update(ctx context.Context, identity middleware.Identity, room
 	return rm, nil
 }
 
+// SetImage ใช้กับปุ่มอัปโหลดรูปห้อง ซึ่งเปลี่ยนรูปอย่างเดียวไม่ได้แก้ฟิลด์อื่น
+func (s *Service) SetImage(ctx context.Context, identity middleware.Identity, roomID uuid.UUID, url, ip string) (*Room, error) {
+	branchID, err := s.branchOf(ctx, identity, roomID)
+	if err != nil {
+		return nil, err
+	}
+
+	v := validate.New()
+	url = v.ImageURL("image_url", url, true)
+	if err := v.Err(); err != nil {
+		return nil, err
+	}
+
+	rm, err := s.repo.UpdateImage(ctx, roomID, branchID, url)
+	if err != nil {
+		return nil, access.MapErr(err)
+	}
+
+	s.record(ctx, identity, "room.update_image", rm.ID.String(),
+		map[string]any{"room_number": rm.RoomNumber}, ip)
+	return rm, nil
+}
+
 // UpdateStatus คือปุ่มอัปเดตสถานะห้องแบบ real-time ในหน้าจัดการห้องพัก
 func (s *Service) UpdateStatus(ctx context.Context, identity middleware.Identity, roomID uuid.UUID, status string, ip string) (*Room, error) {
 	branchID, err := s.branchOf(ctx, identity, roomID)
