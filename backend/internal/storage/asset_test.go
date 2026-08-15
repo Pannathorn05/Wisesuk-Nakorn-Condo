@@ -208,6 +208,34 @@ func TestUploadRejectsNonImage(t *testing.T) {
 	}
 }
 
+// ตัวตรวจลิงก์และ proxy บางตัวยิง HEAD ไม่ใช่ GET — ต้องได้ header ชุดเดียวกันโดยไม่มี body
+func TestServeRespondsToHead(t *testing.T) {
+	t.Parallel()
+
+	app := testsupport.NewApp(t)
+	token := testsupport.AccessToken(t, app.Pool, app.Fixture.AdminAID)
+	content := pngBytes(t, color.RGBA{R: 40, G: 40, B: 200, A: 255})
+
+	rec := upload(t, app, "/api/v1/admin/branch/images/upload", token, content, "a.png", nil)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("อัปโหลดได้ status %d ต้องการ 201", rec.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodHead, imageURLOf(t, rec, "image_url"), nil)
+	head := httptest.NewRecorder()
+	app.Handler.ServeHTTP(head, req)
+
+	if head.Code != http.StatusOK {
+		t.Fatalf("HEAD ได้ status %d ต้องการ 200", head.Code)
+	}
+	if ct := head.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("HEAD คืน Content-Type = %q ต้องการ image/png", ct)
+	}
+	if head.Header().Get("ETag") == "" {
+		t.Error("HEAD ไม่มี ETag")
+	}
+}
+
 // ฟิลด์ข้อความใน multipart ไม่ได้ผ่าน decoder ของ JSON จึงอาจเป็นไบต์ที่ไม่ใช่ UTF-8
 // ต้องได้ 422 พร้อมชื่อฟิลด์ ไม่ใช่ 500 ตอน INSERT ลงฐานข้อมูล
 func TestUploadRejectsNonUTF8Caption(t *testing.T) {

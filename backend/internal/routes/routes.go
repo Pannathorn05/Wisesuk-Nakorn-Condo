@@ -57,7 +57,12 @@ func New(s *server.Server) http.Handler {
 	})
 
 	// รูปสาขา/ห้องที่เก็บไว้ในฐานข้อมูล เสิร์ฟแบบ read-only
+	//
+	// รับ HEAD ด้วยเพื่อให้เท่ากับ /uploads/* ที่ http.FileServer รองรับอยู่แล้ว
+	// (เบราว์เซอร์โหลด <img> ด้วย GET แต่ตัวตรวจลิงก์และ proxy บางตัวยิง HEAD)
+	// net/http ตัด body ให้เองเมื่อ method เป็น HEAD จึงใช้ handler ตัวเดียวกันได้
 	r.GET("/files/:assetID", s.Assets.Serve)
+	r.HEAD("/files/:assetID", s.Assets.Serve)
 
 	// ไฟล์ที่อัปโหลด (สลิป) เสิร์ฟแบบ read-only
 	r.GET("/uploads/*filepath", serveUpload(s.Config.UploadDir))
