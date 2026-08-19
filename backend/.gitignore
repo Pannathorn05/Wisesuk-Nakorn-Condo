@@ -5,6 +5,7 @@
 
 # ไฟล์ที่ผู้ใช้อัปโหลด (สลิป / รูปภาพ)
 uploads/
+scripts/postman/
 
 # binary
 /api
