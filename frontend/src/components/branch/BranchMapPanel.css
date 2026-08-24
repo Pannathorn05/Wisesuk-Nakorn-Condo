@@ -14,3 +14,33 @@
   height: 100%;
   border: none;
 }
+
+/* ปุ่ม "เปิดใน Maps" ที่ Google แปะมาเองอยู่มุมซ้ายบนของ iframe อยู่แล้ว (คุมไม่ได้ เป็น UI ของ Google)
+   แต่พาไปแค่หน้าพิกัดดิบเพราะ iframe ฝังด้วยพิกัด lat/lng ไม่ใช่ธุรกิจจริง — ปุ่มนี้ของเราเองวางไว้
+   มุมขวาบนแทน (มุมเดียวที่ Google ไม่ได้ใช้พื้นที่ — ซ้ายบนคือปุ่ม Google, ขวาล่าง/ซ้ายล่างคือปุ่มซูม
+   และเครดิตแผนที่) พาไปหน้าสถานที่จริงของ Google Business Profile (ดู getBranchOpenMapUrl) */
+.branch-map__open-link {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+}
+
+.branch-map__open-link:hover {
+  background: #fff;
+}
+
+.branch-map__open-link svg {
+  flex-shrink: 0;
+  color: var(--color-primary);
+}

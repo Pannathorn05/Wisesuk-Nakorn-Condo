@@ -35,7 +35,7 @@ export function ContactBranchCard({ branch }) {
         )}
       </ul>
 
-      <BranchMapPanel mapUrl={branch.map_url} branchName={branch.name} />
+      <BranchMapPanel branch={branch} />
     </div>
   );
 }

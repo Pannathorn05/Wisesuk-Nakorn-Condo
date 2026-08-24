@@ -20,18 +20,24 @@ function uploadUrl(slug, relPath) {
 }
 
 // bangkhae และ charoenkrung-place เก็บไฟล์แบบแบน ตั้งชื่อเรียงเลข 1..n ต่อเนื่อง
-function numberedPhotos(slug, prefix, count) {
-  return Array.from({ length: count }, (_, i) => uploadUrl(slug, `${prefix}-${i + 1}.jpg`));
+// firstNumber (ถ้าระบุ) ดันไฟล์เลขนั้นขึ้นเป็นรูปแรกแทน (ใช้เป็นรูปปก) ที่เหลือเรียงเลข 1..n ตามเดิม
+function numberedPhotos(slug, prefix, count, firstNumber) {
+  const numbers = Array.from({ length: count }, (_, i) => i + 1);
+  if (firstNumber) {
+    const rest = numbers.filter((n) => n !== firstNumber);
+    numbers.splice(0, numbers.length, firstNumber, ...rest);
+  }
+  return numbers.map((n) => uploadUrl(slug, `${prefix}-${n}.jpg`));
 }
 
 const BRANCH_PHOTOS = {
-  bangkhae: numberedPhotos("bangkhae", "bk", 45),
-  "charoenkrung-place": numberedPhotos("charoenkrung-place", "ckp", 44),
+  bangkhae: numberedPhotos("bangkhae", "bk", 45, 23),
+  "charoenkrung-place": numberedPhotos("charoenkrung-place", "ckp", 44, 41),
   // prachauthit-45 เก็บแยกโฟลเดอร์ย่อยตามหมวด (views = ภายนอกอาคาร, days/month = ห้องพักรายวัน/รายเดือน)
   // ชื่อไฟล์ไม่เรียงเลขต่อเนื่อง (มี "(1)" ต่อท้ายจากการดาวน์โหลดซ้ำ) จึงต้องระบุทีละไฟล์
   "prachauthit-45": [
-    "views/v-45-3.jpg",
     "views/v-45-1 (1).jpg",
+    "views/v-45-3.jpg",
     "views/v-45-2 (1).jpg",
     "days/d-45-1.jpg",
     "days/d-45-2 (3).jpg",
@@ -52,6 +58,12 @@ export function getBranchGalleryPhotos(slug) {
   return BRANCH_PHOTOS[slug] || [];
 }
 
+// รวมรูปของทุกสาขาเป็น pool เดียว — ใช้กับจุดที่อยากสุ่มรูปโชว์แบบไม่ผูกกับสาขาใดสาขาหนึ่ง
+// (เช่น hero carousel หน้าแรก) ไม่ใช่การ hardcode ข้อมูลใหม่ แค่รวม array ที่มีอยู่แล้วด้านบน
+export function getAllBranchPhotos() {
+  return Object.values(BRANCH_PHOTOS).flat();
+}
+
 export function getBranchCoverPhoto(slug) {
   return BRANCH_PHOTOS[slug]?.[0] || null;
 }
@@ -62,10 +74,10 @@ export function getBranchCover(branch) {
   return branch?.cover_image_url || getBranchCoverPhoto(branch?.slug) || null;
 }
 
-// ใช้กับการ์ดผลการค้นหาห้อง — Room.image_url ยังว่างทุกห้องในข้อมูลจริงเหมือนกัน
-// ตกไปที่รูปของสาขานั้น (ผ่าน branchesById ที่ join เอาไว้แล้ว) เป็นลำดับสอง
+// ใช้กับการ์ดผลการค้นหาห้อง (ห้องพักรายวัน/รายเดือน) — Room.image_url ยังว่างทุกห้องในข้อมูลจริง
+// เหมือนกัน แต่ส่วนนี้ "ยังไม่ต้องดึงรูป" ตามที่แจ้งไว้ (ต่างจากรูปสาขาที่ดึงจาก backend/uploads
+// แล้ว) เลยไม่ตกไปใช้รูปปกของสาขาเป็น fallback แบบ getBranchCover — ปล่อยให้ ImageWithFallback
+// แสดง placeholder ไอคอนไปก่อนจนกว่าจะมีรูปห้องจริง (branchesById ยังรับไว้เผื่อกลับมาใช้ทีหลัง)
 export function getRoomImage(room, branchesById) {
-  if (room.image_url) return room.image_url;
-  const branch = branchesById?.get(room.branch_id);
-  return getBranchCover(branch);
+  return room.image_url || null;
 }

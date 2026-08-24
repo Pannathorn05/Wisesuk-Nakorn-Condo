@@ -92,7 +92,7 @@ export function BranchDetailPage() {
 
         <div className="branch-detail-page__media-row">
           {isMapTab ? (
-            <BranchMapPanel mapUrl={branch.map_url} branchName={branch.name} />
+            <BranchMapPanel branch={branch} />
           ) : (
             <BranchGallery photos={getBranchGalleryPhotos(branch.slug)} />
           )}
