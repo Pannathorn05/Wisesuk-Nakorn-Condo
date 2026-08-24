@@ -1,0 +1,16 @@
+.branch-map__empty,
+.branch-map__link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  background: linear-gradient(135deg, var(--color-surface-alt), #d8d0bd);
+}
+
+.branch-media-box iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}

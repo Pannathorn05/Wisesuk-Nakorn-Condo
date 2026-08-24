@@ -1,0 +1,29 @@
+.contact-page .section-heading h1 {
+  font-size: var(--font-size-3xl);
+  font-weight: 800;
+}
+
+.contact-page__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.contact-card-skeleton {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+}
+
+@media (max-width: 900px) {
+  .contact-page__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .contact-page__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

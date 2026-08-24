@@ -1,0 +1,8 @@
+.rooms-page__heading {
+  text-align: left;
+}
+
+.rooms-page__heading h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: 800;
+}

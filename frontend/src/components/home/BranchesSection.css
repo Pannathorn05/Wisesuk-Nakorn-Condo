@@ -1,0 +1,70 @@
+.branches-section__grid {
+  display: grid;
+  /* minmax(0, 1fr) แทน 1fr เฉย ๆ — ป้องกัน grid track กว้างเกิน viewport ตาม min-content ของที่อยู่สาขา */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.branch-card {
+  display: block;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.branch-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card);
+}
+
+.branch-card__image {
+  height: 260px;
+}
+
+.branch-card__image img,
+.branch-card__image .img-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.branch-card__body {
+  padding: var(--space-4);
+}
+
+.branch-card__body h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.branch-card__body p {
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+.branch-card__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 900px) {
+  .branches-section__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .branches-section__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

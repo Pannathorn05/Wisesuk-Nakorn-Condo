@@ -1,0 +1,133 @@
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  height: var(--header-height);
+}
+
+.site-header__inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.site-header__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.site-header__brand-icon {
+  color: var(--color-primary);
+}
+
+.site-header__brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.site-header__brand-text strong {
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+}
+
+.site-header__brand-text small {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.site-header__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  justify-content: center;
+}
+
+.site-header__nav-link {
+  padding: var(--space-2) var(--space-4);
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.site-header__nav-link:hover {
+  background: var(--color-surface-alt);
+}
+
+.site-header__nav-link.is-active {
+  background: var(--color-primary);
+  color: var(--color-text-on-dark);
+}
+
+.site-header__nav-auth {
+  display: none;
+}
+
+.site-header__auth-desktop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.site-header__toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+  padding: var(--space-2);
+}
+
+@media (max-width: 900px) {
+  .site-header__auth-desktop {
+    display: none;
+  }
+
+  .site-header__toggle {
+    display: inline-flex;
+  }
+
+  .site-header__nav {
+    position: absolute;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--space-4);
+    gap: var(--space-1);
+    display: none;
+  }
+
+  .site-header__nav.is-open {
+    display: flex;
+  }
+
+  .site-header__nav-link {
+    border-radius: var(--radius-sm);
+    text-align: center;
+  }
+
+  .site-header__nav-auth {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
+  .site-header__nav-auth .btn {
+    flex: 1;
+  }
+}

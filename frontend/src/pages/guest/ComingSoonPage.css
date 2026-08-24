@@ -1,0 +1,19 @@
+.coming-soon {
+  min-height: calc(100vh - var(--header-height) - 260px);
+  display: flex;
+  align-items: center;
+}
+
+.coming-soon__box {
+  text-align: center;
+}
+
+.coming-soon__box h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+}
+
+.coming-soon__box p {
+  margin: var(--space-3) 0 var(--space-5);
+  color: var(--color-text-muted);
+}

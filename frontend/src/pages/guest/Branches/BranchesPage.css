@@ -1,0 +1,28 @@
+.branches-page .section-heading h1 {
+  font-size: var(--font-size-3xl);
+  font-weight: 800;
+}
+
+.branch-row-skeleton {
+  display: grid;
+  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  gap: var(--space-6);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: var(--space-5);
+}
+
+.branch-row-skeleton__body {
+  padding: var(--space-5) var(--space-5) var(--space-5) 0;
+}
+
+@media (max-width: 760px) {
+  .branch-row-skeleton {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .branch-row-skeleton__body {
+    padding: var(--space-5);
+  }
+}

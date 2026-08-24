@@ -1,0 +1,122 @@
+/* .branch-media-box: กล่องขนาด/มุมโค้งเดียวกันใช้ร่วมกันทั้ง gallery (ไฟล์นี้) และ map panel (BranchMapPanel.css ไม่ต้อง define ซ้ำ) */
+.branch-media-box {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  /* container เต็มจอ (--container-max-width: none) แปลว่าความกว้างกล่องนี้ยืดตาม viewport ได้มาก
+     ถ้าไม่ตั้ง max-height ไว้ กล่องจะสูงตามไปด้วย (aspect-ratio) จนใหญ่เกินสัดส่วนหน้าเว็บบนจอกว้าง ๆ */
+  max-height: 1280px;
+  /* .branch-media-box เป็น grid item ของ .branch-detail-page__media-row — grid item ก็มี
+     automatic minimum size จาก content ข้างในเหมือน flex item ถ้ารูปเป็นแนวตั้ง (portrait) จะดัน
+     ให้กล่องสูงเกิน 16:10 ที่ตั้งใจไว้ ต้องปิดด้วย min-height: 0 (บั๊กเดียวกับ .other-branches__image
+     ใน OtherBranchesSidebar.css) */
+  min-height: 0;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* จอใหญ่ (>900px) — กล่องนี้กับ .other-branches (OtherBranchesSidebar.css) อยู่แถวเดียวกันใน grid
+   (.branch-detail-page__media-row) เดิมตั้งใจให้กล่องนี้ (ซ้าย) เป็นตัวกำหนดความสูงแถวเสมอ (สูงกว่า
+   sidebar เป็นปกติ) แล้ว sidebar ค่อยยืดตาม — แต่ที่ความกว้างจอบางช่วง (เช่น ~900-1100px) เนื้อหา
+   ของ sidebar (การ์ด 2 ใบ + ข้อความ) อาจสูงกว่า 16:10 ของกล่องนี้ที่ความกว้างแคบลง ถ้าไม่ยืดตามด้วย
+   จะเหลือพื้นที่ว่างข้างล่างกล่องรูป (aspect-ratio คงความสูงตัวเองไว้ตายตัว ไม่ยอมสูงขึ้นตามแถว)
+   height: 100% ให้ยืดเต็มความสูงแถว grid จริง (ไม่ circular เหมือน flexbox เพราะ grid คำนวณขนาด
+   track จาก natural size ของทุก item ก่อน ค่อย resolve percentage height ทีหลัง) aspect-ratio
+   ด้านบนยังมีผลตอนวัดขนาด natural ของแถว (กรณีกล่องนี้เป็นตัวกำหนดความสูงแถวเองตามปกติ) — คู่กับ
+   .other-branches__image ที่สลับไปยืดตามกล่องนี้ในทิศทางกลับกันเวลากล่องนี้สูงกว่าแทน
+
+   ต้อง scope ด้วย .branch-detail-page__media-row นำหน้า ห้ามใช้ .branch-media-box เฉย ๆ —
+   คลาสนี้ใช้ร่วมกับ BranchMapPanel ด้วย (ทั้งแท็บ "แผนที่" ในหน้านี้ และการ์ดในหน้า "ติดต่อเรา"
+   ContactBranchCard.jsx) ถ้าไม่ scope กฎนี้จะหลุดไปโดนกล่องแผนที่ในหน้าติดต่อเราด้วย ทั้งที่หน้านั้น
+   ไม่มี sidebar ให้ยืดตาม (ทำให้กล่องยุบเหลือแค่สูงเท่าไอคอน+ข้อความ ไม่ใช่กล่อง 16:10 ที่ตั้งใจไว้) */
+@media (min-width: 901px) {
+  .branch-detail-page__media-row .branch-media-box {
+    /* ต้องปิด aspect-ratio ไปเลยตรงนี้ ไม่ใช่แค่เติม height:100% เฉย ๆ — ถ้าเหลือ aspect-ratio:16/10
+       ไว้พร้อมกับ height:100% เบราว์เซอร์จะคำนวณ "width" ย้อนกลับจาก height ใหม่ตาม ratio แทน
+       (แถวยิ่งสูง กล่องยิ่งกว้างล้น grid track ออกไปทางขวาแทนที่จะแค่ยืดสูงตรง ๆ) width: 100% กับ
+       min-width: 0 กันไว้คู่กันเผื่อ track เดียวกันนี้แคบกว่า content ปกติของกล่องด้วย */
+    aspect-ratio: auto;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+  }
+}
+
+.branch-gallery img {
+  /* position: absolute (แทน width/height: 100% แบบ in-flow เดิม) — .branch-media-box เป็น
+     position: relative อยู่แล้ว (ไว้วางปุ่ม nav/dots) การเอารูปออกจาก flow ด้วยวิธีเดียวกันนี้ กัน
+     ไม่ให้ "ขนาดจริงของไฟล์รูป" (naturalWidth/Height) หลุดเข้าไปเป็นค่าตั้งต้นตอน grid วัดขนาด auto
+     ของแถว .branch-detail-page__media-row (BranchDetailPage.css) — ถ้ารูปเป็นแนวตั้งมาก ๆ ค่านี้จะ
+     ทำให้แถวสูงเกินจริงไปมาก (บั๊กคนละจุดกับ automatic minimum size ของ flex/grid ที่แก้ด้วย
+     min-height: 0 ไปแล้ว อันนี้เป็นคนละกลไก เกิดตอน .branch-media-box มี height: 100% ที่ >900px
+     ด้านบน — เอารูปออกจาก flow ไปเลยตัดปัญหาที่ต้นตอ) */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.branch-gallery__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  background: linear-gradient(135deg, var(--color-surface-alt), #d8d0bd);
+}
+
+.branch-gallery__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.branch-gallery__nav:hover {
+  background: #fff;
+}
+
+.branch-gallery__nav--prev {
+  left: var(--space-3);
+}
+
+.branch-gallery__nav--next {
+  right: var(--space-3);
+}
+
+.branch-gallery__dots {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.branch-gallery__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 0;
+}
+
+.branch-gallery__dot.is-active {
+  background: #fff;
+  width: 20px;
+  border-radius: 4px;
+}

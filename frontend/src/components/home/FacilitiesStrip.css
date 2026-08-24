@@ -1,0 +1,51 @@
+.facilities {
+  padding: var(--space-6) 0;
+}
+
+.facilities__grid {
+  display: grid;
+  /* minmax(0, 1fr) แทน 1fr เฉย ๆ — ป้องกัน grid track กว้างเกิน viewport ตาม min-content ของ label ยาว ๆ */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.facilities__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  font-weight: 600;
+  font-size: var(--font-size-base);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+
+.facilities__item span {
+  overflow-wrap: break-word;
+}
+
+.facilities__icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  padding: var(--space-2);
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-primary);
+}
+
+@media (max-width: 768px) {
+  .facilities__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+}
+
+@media (max-width: 420px) {
+  .facilities__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

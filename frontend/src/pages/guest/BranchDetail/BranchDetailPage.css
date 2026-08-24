@@ -1,0 +1,54 @@
+.branch-detail-page h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: 800;
+}
+
+.branch-detail-page__address {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.branch-tabs {
+  display: inline-flex;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.branch-tabs__btn {
+  border: none;
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-5);
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.branch-tabs__btn.is-active {
+  background: var(--color-primary);
+  color: var(--color-text-on-dark);
+}
+
+.branch-detail-page__media-row {
+  display: grid;
+  /* คอลัมน์ขวา (sidebar) เดิมตรึงไว้ 380px ตายตัว — ที่ความกว้างจอช่วง 901-1100px (ทันทีที่ข้าม
+     breakpoint ด้านล่างจากคอลัมน์เดียวมาเป็น 2 คอลัมน์) คอลัมน์ซ้าย (กล่องรูปหลัก) เหลือพื้นที่น้อยมาก
+     จนแคบกว่า sidebar เกือบเท่าตัว ดูไม่สมส่วน ใช้ min(380px, 30%) แทนให้ sidebar หดตามพื้นที่จริงที่
+     ความกว้างจอน้อย ๆ ด้วย แต่ยังตรึงเพดานไว้ที่ 380px เท่าเดิมเมื่อจอกว้างพอ (สัดส่วนเดิมที่ >1300px
+     ไม่เปลี่ยน) */
+  grid-template-columns: minmax(0, 1fr) minmax(0, min(380px, 30%));
+  gap: var(--space-5);
+  /* align-items: stretch (ค่า default ของ grid) ตั้งใจปล่อยไว้ — .branch-media-box (ซ้าย) กำหนด
+     ความสูงของตัวเองด้วย aspect-ratio/max-height อยู่แล้วเสมอ (สูงกว่า sidebar เป็นปกติ) การ stretch
+     จะดึงความสูงของ sidebar (OtherBranchesSidebar) ให้เท่ากับกล่องซ้ายพอดี ไม่ใช่ในทางกลับกัน —
+     ดู .other-branches ที่ใช้ grid-template-rows: auto 1fr 1fr รับความสูงนี้ต่อ (breakpoint >900px) */
+}
+
+@media (max-width: 900px) {
+  .branch-detail-page__media-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
