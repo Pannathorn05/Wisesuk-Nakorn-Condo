@@ -27,9 +27,14 @@ export function FilterBar({ filters, onFilterChange, branches, branchesLoading, 
         options={STAY_TYPE_OPTIONS}
         value={filters.stayType}
         defaultLabel="ทุกประเภท"
-        onChange={(stayType) => onFilterChange({ stayType, date: "" })}
+        onChange={(stayType) => onFilterChange({ stayType, dateFrom: "", dateTo: "" })}
       />
-      <DateFilterDropdown value={filters.date} onChange={(date) => onFilterChange({ date })} />
+      <DateFilterDropdown
+        stayType={filters.stayType}
+        from={filters.dateFrom}
+        to={filters.dateTo}
+        onChange={(dateFrom, dateTo) => onFilterChange({ dateFrom, dateTo })}
+      />
     </div>
   );
 }

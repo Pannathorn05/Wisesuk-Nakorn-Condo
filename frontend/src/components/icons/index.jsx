@@ -161,6 +161,40 @@ export function IconPin(props) {
   );
 }
 
+export function IconStar(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7z" />
+    </svg>
+  );
+}
+
+export function IconWallet(props) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="6" width="18" height="13" rx="2" />
+      <path d="M3 10h18" />
+      <circle cx="16" cy="14.5" r="1.4" />
+    </svg>
+  );
+}
+
+export function IconDroplet(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3s6 6.8 6 11a6 6 0 11-12 0c0-4.2 6-11 6-11z" />
+    </svg>
+  );
+}
+
+export function IconBolt(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M13 2 5 14h6l-1 8 9-12h-6z" />
+    </svg>
+  );
+}
+
 /* ===== ไอคอน amenity — ต้องครบตาม `icon` field ที่ GET /api/v1/amenities ส่งจริง 12 ตัว ===== */
 
 export function IconTv(props) {
@@ -313,6 +347,55 @@ export function IconBuilding(props) {
       <line x1="10" y1="11" x2="10" y2="11.01" />
       <line x1="7" y1="15" x2="7" y2="15.01" />
       <line x1="10" y1="15" x2="10" y2="15.01" />
+    </svg>
+  );
+}
+
+/* ===== ไอคอนสำหรับหน้า Login/Register (docs/task/frontend/05-login-register.md, FE-21) ===== */
+
+export function IconMail(props) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 6.5l9 6 9-6" />
+    </svg>
+  );
+}
+
+export function IconLockClosed(props) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="4" y="10" width="16" height="10" rx="2" />
+      <path d="M7.5 10V7a4.5 4.5 0 019 0v3" />
+      <circle cx="12" cy="15" r="1.4" />
+    </svg>
+  );
+}
+
+export function IconEye(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+export function IconEyeOff(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.2A10.6 10.6 0 0112 5c6.5 0 10 7 10 7a15.6 15.6 0 01-3.4 4.4M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a9.9 9.9 0 004.4-1" />
+      <path d="M9.9 10a3 3 0 004.2 4.2" />
+    </svg>
+  );
+}
+
+export function IconUser(props) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
     </svg>
   );
 }

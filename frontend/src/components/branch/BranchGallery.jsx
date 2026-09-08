@@ -1,12 +1,19 @@
-import { useState } from "react";
 import { IconBuilding, IconChevronLeft, IconChevronRight } from "../icons";
+import { useCarousel } from "../../hooks/useCarousel";
+import "../common/Carousel.css";
 import "./BranchGallery.css";
 
-// carousel รูปภาพสาขา — ถ้าไม่มีรูปจริงเลย (ยังไม่ได้ถ่าย/ยังไม่อัปโหลด) โชว์ empty state แทนช่องว่าง
-export function BranchGallery({ photos }) {
-  const [index, setIndex] = useState(0);
+const AUTOPLAY_MS = 5000; // เท่ากับ carousel รูปตัวอย่างห้องพักหน้า homepage (HeroSection)
 
-  if (!photos || photos.length === 0) {
+// carousel รูปภาพสาขา — ลักษณะ/พฤติกรรมเดียวกับ carousel หน้า homepage (เลื่อนภาพ + จุดบอกตำแหน่ง +
+// เปลี่ยนรูปอัตโนมัติ) ใช้ hook กลาง useCarousel ร่วมกัน ถ้าไม่มีรูปจริงเลย (ยังไม่ได้ถ่าย/ยังไม่
+// อัปโหลด) โชว์ empty state แทนช่องว่าง
+export function BranchGallery({ photos }) {
+  const slides = photos || [];
+  const { slideCount, extendedSlides, trackIndex, realIndex, smooth, prev, next, goTo, handleTrackTransitionEnd } =
+    useCarousel(slides, { autoplayMs: AUTOPLAY_MS });
+
+  if (slideCount === 0) {
     return (
       <div className="branch-media-box branch-gallery__empty">
         <IconBuilding width={48} height={48} />
@@ -15,28 +22,44 @@ export function BranchGallery({ photos }) {
     );
   }
 
-  const prev = () => setIndex((i) => (i - 1 + photos.length) % photos.length);
-  const next = () => setIndex((i) => (i + 1) % photos.length);
-
   return (
     <div className="branch-media-box branch-gallery">
-      <img src={photos[index]} alt={`รูปบรรยากาศ ${index + 1} จาก ${photos.length}`} />
-      {photos.length > 1 && (
+      <div
+        className={`carousel__track ${smooth ? "" : "carousel__track--no-transition"}`}
+        style={{ transform: `translateX(-${trackIndex * 100}%)` }}
+        onTransitionEnd={handleTrackTransitionEnd}
+      >
+        {extendedSlides.map((src, i) => {
+          const isActive = i === trackIndex;
+          return (
+            <div
+              className="carousel__slide"
+              key={`${src}-${i}`}
+              role="img"
+              aria-label={`รูปบรรยากาศ ${realIndex + 1} จาก ${slideCount}`}
+              aria-hidden={!isActive}
+            >
+              <img src={src} alt="" className={isActive ? "is-active" : ""} />
+            </div>
+          );
+        })}
+      </div>
+      {slideCount > 1 && (
         <>
-          <button type="button" className="branch-gallery__nav branch-gallery__nav--prev" onClick={prev} aria-label="รูปก่อนหน้า">
+          <button type="button" className="carousel__nav carousel__nav--prev" onClick={prev} aria-label="รูปก่อนหน้า">
             <IconChevronLeft />
           </button>
-          <button type="button" className="branch-gallery__nav branch-gallery__nav--next" onClick={next} aria-label="รูปถัดไป">
+          <button type="button" className="carousel__nav carousel__nav--next" onClick={next} aria-label="รูปถัดไป">
             <IconChevronRight />
           </button>
-          <div className="branch-gallery__dots">
-            {photos.map((photo, i) => (
+          <div className="carousel__dots">
+            {slides.map((src, i) => (
               <button
-                key={photo}
+                key={src}
                 type="button"
-                className={`branch-gallery__dot ${i === index ? "is-active" : ""}`}
+                className={`carousel__dot ${i === realIndex ? "is-active" : ""}`}
                 aria-label={`ไปรูปที่ ${i + 1}`}
-                onClick={() => setIndex(i)}
+                onClick={() => goTo(i)}
               />
             ))}
           </div>

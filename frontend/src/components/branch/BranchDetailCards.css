@@ -13,22 +13,44 @@
 }
 
 .branch-detail-card h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--font-size-lg);
   font-weight: 700;
   margin-bottom: var(--space-4);
 }
 
+.branch-detail-card h3 svg {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+/* เส้นคั่นใต้หัวข้อ เฉพาะการ์ด "รายละเอียดเพิ่มเติม" — การ์ดอื่น (สิ่งอำนวยความสะดวก/ติดต่อสาขานี้)
+   ไม่มีเส้นนี้ ตั้งใจ scope ด้วย --info โดยเฉพาะ ไม่ใช้ .branch-detail-card h3 เฉย ๆ */
+.branch-detail-card--info h3 {
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
 .branch-detail-card__list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin: 0;
 }
 
 .branch-detail-card__row {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   font-size: var(--font-size-sm);
+}
+
+.branch-detail-card__row svg {
+  flex-shrink: 0;
+  color: var(--color-primary);
 }
 
 .branch-detail-card__row dt {
@@ -50,21 +72,41 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-3);
 }
 
 .branch-amenities-list li {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  text-align: center;
+  font-size: var(--font-size-xs);
+  min-width: 0;
 }
 
-.branch-amenities-list li svg {
-  flex-shrink: 0;
+.branch-amenities-list__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-surface);
   color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.branch-amenities-list li span:last-child {
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 420px) {
+  .branch-amenities-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {

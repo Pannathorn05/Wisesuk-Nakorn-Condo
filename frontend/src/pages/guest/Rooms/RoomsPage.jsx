@@ -26,7 +26,8 @@ export function RoomsPage() {
   const [filters, setFilters] = useState({
     branchId: searchParams.get("branch_id") || "",
     stayType: searchParams.get("stay_type") || "",
-    date: searchParams.get("date") || "",
+    dateFrom: searchParams.get("date_from") || "",
+    dateTo: searchParams.get("date_to") || "",
   });
   const [page, setPage] = useState(Number(searchParams.get("page")) || 1);
   const [modalOpen, setModalOpen] = useState(false);
@@ -40,7 +41,8 @@ export function RoomsPage() {
     const params = {};
     if (nextFilters.branchId) params.branch_id = nextFilters.branchId;
     if (nextFilters.stayType) params.stay_type = nextFilters.stayType;
-    if (nextFilters.date) params.date = nextFilters.date;
+    if (nextFilters.dateFrom) params.date_from = nextFilters.dateFrom;
+    if (nextFilters.dateTo) params.date_to = nextFilters.dateTo;
     if (nextPage > 1) params.page = String(nextPage);
     setSearchParams(params, { replace: true });
   }

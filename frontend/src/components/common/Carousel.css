@@ -1,0 +1,121 @@
+/* สไตล์ carousel วนลูป-เลื่อนภาพ ใช้ร่วมกันทั้ง HeroSection (หน้าแรก) และ BranchGallery
+   (หน้ารายละเอียดสาขา) คู่กับ hooks/useCarousel.jsx — กล่องที่ครอบ (.hero__carousel /
+   .branch-media-box) ต้องเป็น position: relative + overflow: hidden + มีขนาดจริงเอง (เช่นผ่าน
+   aspect-ratio) เพราะ .carousel__track/.carousel__slide ยึดขนาด 100% ของกล่องนั้นเสมอ */
+
+/* แถบรวมทุกรูปเรียงแนวนอน — เปลี่ยนรูปด้วยการเลื่อน transform (ไม่ใช่สลับรูปเดี่ยว ๆ) ได้แอนิเมชั่น
+   เลื่อนแบบ carousel ความกว้างของ .carousel__slide แต่ละอัน = 100% ของกล่องที่ครอบ (flex: 0 0 100%
+   ป้องกันไม่ให้ item หดตามจำนวนรูปในแถบ) โครงสร้างจริงคือ [โคลนรูปสุดท้าย, ...รูปจริง, โคลนรูปแรก]
+   (ดู extendedSlides ใน useCarousel.jsx) เพื่อให้วนลูปได้แบบไม่มีรอยต่อตอนเลื่อนสุดขอบ — cubic-bezier
+   แบบ ease-in-out ให้เริ่ม/จบนุ่มกว่า ease ธรรมดา */
+.carousel__track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.65s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ปิด transition ชั่วคราวตอนสแนปกลับจากโคลนหัว/ท้ายไปตำแหน่งจริง (useCarousel.jsx ควบคุม on/off
+   ผ่านคลาสนี้ — ดูคอมเมนต์ useEffect ของ smooth ในนั้นประกอบ) */
+.carousel__track--no-transition {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel__track {
+    transition: none;
+  }
+}
+
+.carousel__slide {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--color-surface-alt), #d8d0bd);
+  color: var(--color-text-muted);
+  overflow: hidden;
+}
+
+.carousel__slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* เอฟเฟกต์ซูมช้า ๆ (Ken Burns) ระหว่างที่รูปนั้นกำลังโชว์อยู่ — ให้ภาพนิ่งดูมีชีวิตชีวาขึ้นแทนที่จะ
+   ค้างเฉย ๆ ระหว่างรอเปลี่ยนรูปถัดไป (คลาส is-active ผูกกับรูปที่ trackIndex ชี้อยู่ตอนนี้เท่านั้น) */
+.carousel__slide img.is-active {
+  animation: carousel-ken-burns 0.65s ease-out forwards;
+}
+
+@keyframes carousel-ken-burns {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel__slide img.is-active {
+    animation: none;
+  }
+}
+
+.carousel__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.carousel__nav:hover {
+  background: #fff;
+}
+
+.carousel__nav--prev {
+  left: var(--space-3);
+}
+
+.carousel__nav--next {
+  right: var(--space-3);
+}
+
+.carousel__dots {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.carousel__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 0;
+  transition: width 0.3s ease, border-radius 0.3s ease, background-color 0.2s ease;
+}
+
+.carousel__dot.is-active {
+  background: #fff;
+  width: 20px;
+  border-radius: 4px;
+}

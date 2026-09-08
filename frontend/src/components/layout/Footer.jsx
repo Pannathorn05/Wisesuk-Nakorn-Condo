@@ -20,7 +20,7 @@ export function Footer() {
       <div className="container site-footer__grid">
         <div className="site-footer__brand">
           <div className="site-footer__brand-title">
-            <IconBuilding width={28} height={28} />
+            <IconBuilding width={34} height={34} />
             <strong>วิเศษสุขนครคอนโด</strong>
           </div>
           <p>และหอพักในเครือ</p>
@@ -68,13 +68,13 @@ export function Footer() {
             <ul className="site-footer__contact">
               {activeBranches[0]?.line_id && (
                 <li>
-                  <IconLine width={18} height={18} /> {activeBranches[0].line_id}
+                  <IconLine width={22} height={22} /> {activeBranches[0].line_id}
                 </li>
               )}
               {activeBranches.map((b) =>
                 b.phones?.length ? (
                   <li key={b.id}>
-                    <IconPhone width={18} height={18} />
+                    <IconPhone width={22} height={22} />
                     <span>
                       {b.phones.join(", ")}
                       <small>{b.name}</small>

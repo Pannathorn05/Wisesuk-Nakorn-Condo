@@ -1,26 +1,30 @@
 .branches-section__grid {
   display: grid;
-  /* minmax(0, 1fr) แทน 1fr เฉย ๆ — ป้องกัน grid track กว้างเกิน viewport ตาม min-content ของที่อยู่สาขา */
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-5);
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-6);
 }
 
 .branch-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   background: var(--color-surface);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .branch-card:hover {
-  transform: translateY(-3px);
   box-shadow: var(--shadow-card);
+  transform: translateY(-3px);
 }
 
 .branch-card__image {
-  height: 260px;
+  height: 200px;
+  overflow: hidden;
 }
 
 .branch-card__image img,
@@ -31,7 +35,10 @@
 }
 
 .branch-card__body {
-  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: var(--space-5);
 }
 
 .branch-card__body h3 {
@@ -43,15 +50,26 @@
   margin-top: var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
-  line-height: 1.5;
+  line-height: 1.6;
   overflow-wrap: break-word;
 }
 
-.branch-card__link {
+.branch-card__body p svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  vertical-align: -4px;
+  margin-right: 4px;
+  color: var(--color-primary);
+  stroke-width: 2;
+}
+
+.branch-card__cta {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  margin-top: var(--space-3);
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-4);
   color: var(--color-primary);
   font-weight: 600;
   font-size: var(--font-size-sm);
@@ -59,12 +77,16 @@
 
 @media (max-width: 900px) {
   .branches-section__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (max-width: 620px) {
+@media (max-width: 600px) {
   .branches-section__grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 1fr;
+  }
+
+  .branch-card__image {
+    height: 220px;
   }
 }

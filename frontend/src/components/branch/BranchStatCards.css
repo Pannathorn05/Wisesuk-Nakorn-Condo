@@ -1,0 +1,43 @@
+.branch-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  /* เว้นระยะจากการ์ด "รายละเอียดเพิ่มเติม" ที่ตามมาด้านล่าง (BranchInfoCard) — ทั้งคู่ใช้พื้นหลังสี
+     เดียวกัน (--color-surface-alt) ถ้าไม่เว้นช่องว่างตรงนี้จะดูเหมือนกล่องเดียวกันเชื่อมติดกัน */
+  margin-bottom: var(--space-4);
+}
+
+.branch-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+.branch-stat-card svg {
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.branch-stat-card span {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.branch-stat-card strong {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 420px) {
+  .branch-stat-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

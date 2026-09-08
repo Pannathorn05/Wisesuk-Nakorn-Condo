@@ -1,5 +1,5 @@
 import { formatPrice } from "../../utils/formatPrice";
-import { branchHasDaily, branchHasMonthly } from "../../utils/branchStay";
+import { IconWallet, IconDroplet, IconBolt, IconParking, IconBuilding } from "../icons";
 import "./BranchDetailCards.css";
 
 function getDepositText(branch) {
@@ -16,31 +16,24 @@ function getParkingText(branch) {
   return hasParking ? "มีที่จอดรถ" : "ไม่มีที่จอดรถ";
 }
 
+// รายวัน/รายเดือน ย้ายไปโชว์เป็นการ์ดเด่นด้านบน (BranchStatCards) และ Line/เบอร์โทร/ที่อยู่ ย้ายไป
+// การ์ด "ติดต่อสาขานี้" (BranchContactCard) แล้ว เหลือแค่รายละเอียดอื่นที่ไม่มีการ์ดเฉพาะของตัวเอง
 export function BranchInfoCard({ branch }) {
   const rows = [
-    ["รายวัน", branchHasDaily(branch) ? `เริ่มต้น ${formatPrice(branch.daily_price_from)} บาท/วัน` : "-"],
-    [
-      "รายเดือน",
-      branchHasMonthly(branch)
-        ? `เริ่มต้น ${formatPrice(branch.monthly_price_min)} - ${formatPrice(branch.monthly_price_max)} บาท/เดือน`
-        : "-",
-    ],
-    ["เงินประกัน", getDepositText(branch)],
-    ["ค่าน้ำ", `${formatPrice(branch.water_rate)} บาท/ยูนิต`],
-    ["ค่าไฟ", `${formatPrice(branch.electric_rate)} บาท/ยูนิต`],
-    ["ที่จอดรถ", getParkingText(branch)],
-    ["จำนวนตึก", `${branch.building_count} ตึก ${branch.floor_count} ชั้น/ตึก`],
-    ["Line", branch.line_id || "-"],
-    ["เบอร์โทรศัพท์", branch.phones?.length ? branch.phones.join(", ") : "-"],
-    ["ที่อยู่", branch.address],
+    [IconWallet, "เงินประกัน", getDepositText(branch)],
+    [IconDroplet, "ค่าน้ำ", `${formatPrice(branch.water_rate)} บาท/ยูนิต`],
+    [IconBolt, "ค่าไฟ", `${formatPrice(branch.electric_rate)} บาท/ยูนิต`],
+    [IconParking, "ที่จอดรถ", getParkingText(branch)],
+    [IconBuilding, "จำนวนตึก", `${branch.building_count} ตึก ${branch.floor_count} ชั้น/ตึก`],
   ];
 
   return (
-    <div className="branch-detail-card">
-      <h3>รายละเอียด</h3>
+    <div className="branch-detail-card branch-detail-card--info">
+      <h3>รายละเอียดเพิ่มเติม</h3>
       <dl className="branch-detail-card__list">
-        {rows.map(([label, value]) => (
+        {rows.map(([Icon, label, value]) => (
           <div className="branch-detail-card__row" key={label}>
+            <Icon width={18} height={18} />
             <dt>{label}:</dt>
             <dd>{value}</dd>
           </div>

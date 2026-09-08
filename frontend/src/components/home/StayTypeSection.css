@@ -56,4 +56,8 @@
   .room-type-section__grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .room-type-card__image {
+    height: 220px;
+  }
 }

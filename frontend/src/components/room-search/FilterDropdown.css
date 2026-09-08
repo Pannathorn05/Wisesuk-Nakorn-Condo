@@ -23,6 +23,15 @@
   background: var(--color-surface-alt);
 }
 
+.filter-dropdown__trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.filter-dropdown__trigger:disabled:hover {
+  background: none;
+}
+
 .filter-dropdown__trigger svg:first-child {
   color: var(--color-primary);
   flex-shrink: 0;

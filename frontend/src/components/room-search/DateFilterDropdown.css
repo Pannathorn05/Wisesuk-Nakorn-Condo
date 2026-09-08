@@ -19,6 +19,13 @@
   padding: var(--space-1);
 }
 
+.date-picker__hint {
+  text-align: center;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+}
+
 .date-picker__weekdays,
 .date-picker__grid {
   display: grid;
@@ -32,8 +39,54 @@
   padding: var(--space-1) 0;
 }
 
-.date-picker__day {
+/* .date-picker__cell ครอบปุ่มวันแต่ละวัน — ตัว cell เต็มช่อง grid (aspect-ratio ที่เคยอยู่บนปุ่ม
+   ย้ายมาไว้ตรงนี้แทน) ให้แถบสีของช่วงที่เลือก (is-in-range/is-range-start/is-range-end) เติมเต็ม
+   ช่องต่อกันเป็นแถบเดียวได้ ส่วนปุ่มวงกลมข้างในลอยอยู่ด้านบนอีกที (โหมดวันเดียวไม่มีคลาสช่วงพวกนี้เลย
+   เห็นแค่ปุ่มวงกลม is-selected ตามเดิม) */
+.date-picker__cell {
+  position: relative;
   aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* แถบเชื่อมช่วงเป็น pseudo-element สูงเท่าปุ่มวงกลม (78% ของ cell แทนที่จะเต็ม cell แบบสี่เหลี่ยม)
+   ให้ขอบบน-ล่างของแถบเสมอกับขอบปุ่มพอดี ไม่ใช่บล็อกสี่เหลี่ยมเต็มช่องที่ดูมีมุมโผล่แปลก ๆ อยู่หลังปุ่ม
+   วงกลมเล็ก ๆ — ปุ่ม (.date-picker__day มี z-index สูงกว่า) ลอยทับแถบนี้อีกที */
+.date-picker__cell.is-in-range::before,
+.date-picker__cell.is-range-start::before,
+.date-picker__cell.is-range-end::before {
+  content: "";
+  position: absolute;
+  top: 11%;
+  bottom: 11%;
+  left: 0;
+  right: 0;
+  background: var(--color-surface-alt);
+  z-index: 0;
+}
+
+.date-picker__cell.is-range-start::before {
+  left: 50%;
+}
+
+.date-picker__cell.is-range-end::before {
+  right: 50%;
+}
+
+.date-picker__cell.is-range-start.is-range-end::before {
+  display: none;
+}
+
+.date-picker__day {
+  position: relative;
+  z-index: 1;
+  width: 78%;
+  height: 78%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: none;
   border-radius: 50%;

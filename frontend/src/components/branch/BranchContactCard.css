@@ -1,0 +1,55 @@
+.branch-contact-card h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.branch-contact-card h3 svg {
+  color: var(--color-primary);
+}
+
+.branch-contact-card__info {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.branch-contact-card__info li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  min-width: 0;
+}
+
+.branch-contact-card__info li svg {
+  align-self: center;
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.branch-contact-card__info span {
+  color: var(--color-text-muted);
+}
+
+.branch-contact-card__info strong {
+  font-weight: 700;
+  overflow-wrap: break-word;
+}
+
+.branch-contact-card__empty {
+  color: var(--color-text-muted);
+}
+
+/* ย่อกล่องแผนที่ (BranchMapPanel ใช้ .branch-media-box ร่วมกับกล่องรูปหลัก aspect-ratio 16/10 เดิม)
+   ให้เป็นแค่ thumbnail เล็ก ๆ ท้ายการ์ดนี้แทนที่จะเต็มขนาดปกติ — ต้อง scope ด้วย
+   .branch-contact-card__map นำหน้าเสมอ ห้ามใช้ .branch-media-box เฉย ๆ (คลาสนี้ใช้ร่วมกับ gallery
+   หลักและการ์ดในหน้า "ติดต่อเรา" ด้วย ถ้าไม่ scope จะไปย่อกล่องพวกนั้นโดยไม่ตั้งใจ) */
+.branch-contact-card__map .branch-media-box {
+  aspect-ratio: 3;
+  max-height: 260px;
+}

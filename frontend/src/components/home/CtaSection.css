@@ -1,5 +1,7 @@
 .cta-box {
-  background: var(--color-cta-bg);
+  /* ไล่สีในโทนน้ำตาลเดิมของเว็บ (ไม่ได้เพิ่มสีใหม่) จากสีปุ่มหลักที่อ่อนกว่า ไปจนถึงสีข้อความหลักที่
+     เข้มสุด ให้กล่องมีมิติ ไม่แบนเป็นสีเดียวเหมือนเดิม */
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-cta-bg) 55%, var(--color-text) 100%);
   color: var(--color-text-on-dark);
   border-radius: var(--radius-lg);
   padding: var(--space-8);
