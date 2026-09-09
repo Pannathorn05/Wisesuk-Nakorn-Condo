@@ -50,6 +50,6 @@
    .branch-contact-card__map นำหน้าเสมอ ห้ามใช้ .branch-media-box เฉย ๆ (คลาสนี้ใช้ร่วมกับ gallery
    หลักและการ์ดในหน้า "ติดต่อเรา" ด้วย ถ้าไม่ scope จะไปย่อกล่องพวกนั้นโดยไม่ตั้งใจ) */
 .branch-contact-card__map .branch-media-box {
-  aspect-ratio: 3;
+  aspect-ratio: 4 / 3;
   max-height: 260px;
 }
