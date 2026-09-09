@@ -75,20 +75,37 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 
 	// ------------------------------------------------------------ สาขา
 	const upsertBranch = `
-		INSERT INTO branches (slug, name, tagline, address, phones, line_id,
+		INSERT INTO branches (slug, name, tagline, description, address, phones, line_id,
 		                      building_count, floor_count, daily_price_from,
 		                      monthly_price_min, monthly_price_max,
 		                      water_rate, electric_rate, contract_fee)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, updated_at = now()
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		ON CONFLICT (slug) DO UPDATE SET
+			name              = EXCLUDED.name,
+			tagline           = EXCLUDED.tagline,
+			description       = EXCLUDED.description,
+			address           = EXCLUDED.address,
+			phones            = EXCLUDED.phones,
+			line_id           = EXCLUDED.line_id,
+			building_count    = EXCLUDED.building_count,
+			floor_count       = EXCLUDED.floor_count,
+			daily_price_from  = EXCLUDED.daily_price_from,
+			monthly_price_min = EXCLUDED.monthly_price_min,
+			monthly_price_max = EXCLUDED.monthly_price_max,
+			water_rate        = EXCLUDED.water_rate,
+			electric_rate     = EXCLUDED.electric_rate,
+			contract_fee      = EXCLUDED.contract_fee,
+			updated_at        = now()
 		RETURNING id`
 
 	type branchSeed struct {
 		slug, name, tagline, address, line string
-		phones                             []string
-		buildings, floors                  int
-		dailyFrom, monthlyMin, monthlyMax  float64
-		water, electric, contractFee       float64
+		// ค่าใช้จ่ายที่ยังไม่มีคอลัมน์ของตัวเอง (เช่น ค่าที่จอดรถ) เก็บเป็นข้อความไว้ที่นี่
+		description                       string
+		phones                            []string
+		buildings, floors                 int
+		dailyFrom, monthlyMin, monthlyMax float64
+		water, electric, contractFee      float64
 	}
 
 	branches := []branchSeed{
@@ -107,17 +124,18 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 			address: "111 106 แขวงบางแค เขตบางแค กรุงเทพมหานคร 10160",
 			phones:  []string{"02-454-0888", "085-047-5904"}, line: "@wisetsuk",
 			buildings: 1, floors: 8,
-			dailyFrom: 0, monthlyMin: 3000, monthlyMax: 4500,
-			water: 17, electric: 7, contractFee: 500,
+			dailyFrom: 0, monthlyMin: 3500, monthlyMax: 4500,
+			water: 18, electric: 5.50, contractFee: 500,
 		},
 		{
 			slug: "charoenkrung-place", name: "เจริญกรุงเพลส",
 			tagline: "ใกล้ รพ.เจริญกรุงประชารักษ์ เอเชียทีค Terminal 21 พระราม 3 สาทร",
 			address: "10 ซอย เจริญกรุง 6 ถนน มไหสวรรย์ แขวงบางคอแหลม เขตบางคอแหลม กรุงเทพมหานคร 10120",
 			phones:  []string{"02-291-8288", "081-859-7398"}, line: "@wisetsuk",
-			buildings: 1, floors: 7,
-			dailyFrom: 600, monthlyMin: 3400, monthlyMax: 4800,
-			water: 17, electric: 7, contractFee: 500,
+			description: "ค่าที่จอดรถ 1,000 บาท/เดือน",
+			buildings:   1, floors: 8,
+			dailyFrom: 950, monthlyMin: 7700, monthlyMax: 10000,
+			water: 18, electric: 5, contractFee: 500,
 		},
 	}
 
@@ -129,7 +147,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 			dailyFrom = b.dailyFrom
 		}
 		if err := tx.QueryRow(ctx, upsertBranch,
-			b.slug, b.name, b.tagline, b.address, b.phones, b.line,
+			b.slug, b.name, b.tagline, b.description, b.address, b.phones, b.line,
 			b.buildings, b.floors, dailyFrom, b.monthlyMin, b.monthlyMax,
 			b.water, b.electric, b.contractFee,
 		).Scan(&id); err != nil {
@@ -140,54 +158,147 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 
 	// ------------------------------------------------------------ สิ่งอำนวยความสะดวก
 	amenities := [][3]string{
-		{"tv", "TV", "tv"},
 		{"aircon", "เครื่องปรับอากาศ", "wind"},
-		{"wifi", "ไวไฟ", "wifi"},
-		{"fridge", "ตู้เย็น", "refrigerator"},
-		{"water-heater", "เครื่องทำน้ำอุ่น", "shower"},
-		{"furniture", "เฟอร์นิเจอร์ครบครัน", "sofa"},
-		{"keycard", "ระบบรักษาความปลอดภัย (keycard)", "shield"},
-		{"cctv", "กล้องวงจรปิด", "camera"},
-		{"lift", "ลิฟต์", "elevator"},
 		{"parking", "ที่จอดรถ", "car"},
-		{"laundry", "เครื่องซักผ้าหยอดเหรียญ", "washing-machine"},
-		{"convenience-store", "ร้านสะดวกซื้อ", "store"},
+		{"furniture", "เฟอร์นิเจอร์ - ตู้, เตียง", "sofa"},
+		{"motorcycle-parking", "ที่จอดรถมอเตอร์ไซด์/จักรยาน", "bike"},
+		{"water-heater", "เครื่องทำน้ำอุ่น", "shower"},
+		{"fridge", "ตู้เย็น", "refrigerator"},
+		{"fan", "พัดลม", "fan"},
+		{"lift", "ลิฟต์", "elevator"},
+		{"pool", "สระว่ายน้ำ", "pool"},
+		{"gym", "โรงยิม / ฟิตเนส", "dumbbell"},
+		{"tv", "TV", "tv"},
+		{"cable-tv", "เคเบิลทีวี / ดาวเทียม", "satellite"},
+		{"keycard", "มีระบบรักษาความปลอดภัย (keycard)", "shield"},
+		{"cctv", "กล้องวงจรปิด (CCTV)", "camera"},
+		{"security-guard", "รปภ.", "user-shield"},
+		{"direct-phone", "โทรศัพท์สายตรง", "phone"},
+		{"food-shop", "ร้านขายอาหาร", "utensils"},
+		{"convenience-store", "ร้านค้า สะดวกซื้อ", "store"},
+		{"wifi", "อินเทอร์เน็ตไร้สาย (WIFI) ในห้อง", "wifi"},
+		{"laundry", "ร้านซัก-รีด / มีบริการเครื่องซักผ้า", "washing-machine"},
+		{"salon", "ร้านทำผม-เสริมสวย", "scissors"},
 	}
 	for i, a := range amenities {
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO amenities (code, name, icon, sort_order) VALUES ($1, $2, $3, $4)
-			 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name`,
+			 ON CONFLICT (code) DO UPDATE SET name       = EXCLUDED.name,
+			                                 icon       = EXCLUDED.icon,
+			                                 sort_order = EXCLUDED.sort_order`,
 			a[0], a[1], a[2], i); err != nil {
 			return fmt.Errorf("สิ่งอำนวยความสะดวก %s: %w", a[0], err)
 		}
 	}
-	// ผูกสิ่งอำนวยความสะดวกพื้นฐานให้ทุกสาขา
-	for _, branchID := range branchIDs {
+
+	// สิ่งอำนวยความสะดวกที่แต่ละสาขามีจริง — สาขาที่ไม่ได้ระบุใช้ชุดพื้นฐาน
+	defaultBranchAmenities := []string{"wifi", "aircon", "water-heater", "keycard", "cctv", "parking"}
+	branchAmenities := map[string][]string{
+		"prachauthit-45": {
+			"aircon", "parking", "furniture", "motorcycle-parking", "water-heater",
+			"fan", "keycard", "cctv", "security-guard", "food-shop",
+			"convenience-store", "wifi", "laundry", "salon",
+		},
+		"bangkhae": {
+			"aircon", "parking", "furniture", "motorcycle-parking", "water-heater",
+			"fridge", "lift", "tv", "cable-tv", "keycard", "cctv", "security-guard",
+			"direct-phone", "food-shop", "convenience-store", "wifi", "laundry", "salon",
+		},
+		"charoenkrung-place": {
+			"aircon", "parking", "furniture", "motorcycle-parking", "water-heater",
+			"fridge", "lift", "pool", "gym", "tv", "cable-tv", "keycard", "cctv",
+			"security-guard", "food-shop", "convenience-store", "wifi", "laundry", "salon",
+		},
+	}
+	for i, b := range branches {
+		codes, ok := branchAmenities[b.slug]
+		if !ok {
+			codes = defaultBranchAmenities
+		}
+		// ลบของเดิมก่อนผูกใหม่ เพื่อให้ผลลัพธ์ตรงกับรายการข้างบนเสมอแม้รัน seed ซ้ำ
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM branch_amenities WHERE branch_id = $1`, branchIDs[i]); err != nil {
+			return fmt.Errorf("ล้างสิ่งอำนวยความสะดวกสาขา %s: %w", b.slug, err)
+		}
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO branch_amenities (branch_id, amenity_id)
-			 SELECT $1, id FROM amenities
-			 WHERE code IN ('wifi', 'aircon', 'water-heater', 'keycard', 'cctv', 'parking')
-			 ON CONFLICT DO NOTHING`, branchID); err != nil {
-			return err
+			 SELECT $1, id FROM amenities WHERE code = ANY($2)
+			 ON CONFLICT DO NOTHING`, branchIDs[i], codes); err != nil {
+			return fmt.Errorf("ผูกสิ่งอำนวยความสะดวกสาขา %s: %w", b.slug, err)
 		}
 	}
 
-	// ------------------------------------------------------------ สถานที่ใกล้เคียง (สาขาประชาอุทิศ 45)
-	nearby := [][3]string{
-		{"education", "มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าธนบุรี", "600 เมตร"},
-		{"education", "โรงเรียนบางมดวิทยา", "2.4 กิโลเมตร"},
-		{"shopping", "เดอะไบรท์ พระราม 2", "700 เมตร"},
-		{"hospital", "โรงพยาบาลบางมด", "4.2 กิโลเมตร"},
+	// ------------------------------------------------------------ สถานที่ใกล้เคียง (ราย branch ตามลำดับใน branches)
+	nearbyByBranch := map[int][][3]string{
+		// ประชาอุทิศ 45
+		0: {
+			{"education", "มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าธนบุรี", "600 เมตร"},
+			{"education", "วิทยาลัยพณิชยการเชตุพน", "2.4 กิโลเมตร"},
+			{"education", "โรงเรียนบางมดวิทยา", "2.4 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลบางมด", "4.2 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลบางปะกอก 1", "3.4 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลบางปะกอก 3", "3.4 กิโลเมตร"},
+			{"shopping", "เดอะไบรท์ พระราม 2", "700 เมตร"},
+			{"shopping", "เมเจอร์ ฮอลลีวู้ด สุขสวัสดิ์", "2.2 กิโลเมตร"},
+			{"shopping", "เทสโก้โลตัส บางปะกอก", "3.3 กิโลเมตร"},
+			{"shopping", "บิ๊กซี ราษฎร์บูรณะ", "3.9 กิโลเมตร"},
+			{"shopping", "บิ๊กซี เอ็กซ์ตร้า บางปะกอก", "4 กิโลเมตร"},
+			{"shopping", "บิ๊กซี สุขสวัสดิ์", "2.4 กิโลเมตร"},
+		},
+		// บางแค
+		1: {
+			{"education", "วิทยาลัยเทคโนโลยีกรุงธน บางแค", "2.9 กิโลเมตร"},
+			{"education", "มหาวิทยาลัยสยาม", "5.4 กิโลเมตร"},
+			{"education", "มหาวิทยาลัยเอเชียอาคเนย์", "5.6 กิโลเมตร"},
+			{"education", "วิทยาลัยเทคนิคราชสิทธาราม", "6.6 กิโลเมตร"},
+			{"education", "วิทยาลัยการจัดการเพชรเกษม", "8 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลเกษมราษฎร์ บางแค", "1.4 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลมิตรประชา", "2.9 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลบางมด 3", "4.4 กิโลเมตร"},
+			{"shopping", "เดอะ มอลล์ บางแค", "1.3 กิโลเมตร"},
+			{"shopping", "เทสโก้โลตัส บางแค", "1.8 กิโลเมตร"},
+			{"shopping", "แม็คโคร บางบอน", "3.5 กิโลเมตร"},
+			{"shopping", "บิ๊กซี เอ็กซ์ตร้า บางบอน", "4 กิโลเมตร"},
+			{"shopping", "ตลาดบางแค", "2 กิโลเมตร"},
+			{"shopping", "บิ๊กซี กัลปพฤกษ์", "2.9 กิโลเมตร"},
+			{"shopping", "โฮมโปร กัลปพฤกษ์", "3.2 กิโลเมตร"},
+		},
+		// เจริญกรุงเพลส
+		2: {
+			{"education", "วิทยาลัยพยาบาลกองทัพเรือ", "1.6 กิโลเมตร"},
+			{"education", "วิทยาลัยพณิชยการเชตุพน", "3.4 กิโลเมตร"},
+			{"education", "มหาวิทยาลัยสยาม", "5.1 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลเจริญกรุงประชารักษ์", "380 เมตร"},
+			{"hospital", "โรงพยาบาลสมิติเวช ธนบุรี", "1.9 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลสมเด็จพระปิ่นเกล้า", "1.7 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลบางปะกอก 1", "2.2 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลประชาพัฒน์", "2.3 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลราษฎร์บูรณะ", "2.4 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลสุขสวัสดิ์", "2.5 กิโลเมตร"},
+			{"hospital", "โรงพยาบาลบางปะกอก 9 อินเตอร์เนชั่นแนล", "2.9 กิโลเมตร"},
+			{"shopping", "บิ๊กซี ดาวคะนอง", "1.3 กิโลเมตร"},
+			{"shopping", "บิ๊กซี เอ็กซ์ตร้า บางปะกอก", "1.6 กิโลเมตร"},
+			{"shopping", "บิ๊กซี ราษฎร์บูรณะ", "1.7 กิโลเมตร"},
+			{"shopping", "เทสโก้โลตัส บางปะกอก", "2.3 กิโลเมตร"},
+			{"shopping", "เดอะ มอลล์ ท่าพระ", "2.4 กิโลเมตร"},
+			{"shopping", "โฮมโปร พระราม 3", "2.8 กิโลเมตร"},
+			{"shopping", "เทสโก้โลตัส พระราม 3", "5 กิโลเมตร"},
+			{"shopping", "ตลาดสดบางปะกอก", "2.3 กิโลเมตร"},
+		},
 	}
-	for i, n := range nearby {
+	for idx, places := range nearbyByBranch {
+		// ลบของเดิมก่อนเพิ่มใหม่ เพื่อให้ผลลัพธ์ตรงกับรายการข้างบนเสมอแม้รัน seed ซ้ำ
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO nearby_places (branch_id, category, name, distance, sort_order)
-			 SELECT $1, $2, $3, $4, $5
-			 WHERE NOT EXISTS (
-			   SELECT 1 FROM nearby_places WHERE branch_id = $1 AND name = $3
-			 )`,
-			branchIDs[0], n[0], n[1], n[2], i); err != nil {
-			return err
+			`DELETE FROM nearby_places WHERE branch_id = $1`, branchIDs[idx]); err != nil {
+			return fmt.Errorf("ล้างสถานที่ใกล้เคียงสาขา %s: %w", branches[idx].slug, err)
+		}
+		for i, n := range places {
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO nearby_places (branch_id, category, name, distance, sort_order)
+				 VALUES ($1, $2, $3, $4, $5)`,
+				branchIDs[idx], n[0], n[1], n[2], i); err != nil {
+				return fmt.Errorf("เพิ่มสถานที่ใกล้เคียงสาขา %s: %w", branches[idx].slug, err)
+			}
 		}
 	}
 
