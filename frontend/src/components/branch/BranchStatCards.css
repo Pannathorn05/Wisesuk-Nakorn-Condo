@@ -36,6 +36,17 @@
   overflow-wrap: break-word;
 }
 
+/* สาขาที่ไม่มีห้องประเภทนั้นขาย — ทำให้จางลงชัดเจนว่าไม่ใช่ตัวเลือกที่เลือกได้ ไม่ใช่แค่ราคาหาย */
+.branch-stat-card.is-unavailable svg {
+  color: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+.branch-stat-card.is-unavailable strong {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
 @media (max-width: 420px) {
   .branch-stat-cards {
     grid-template-columns: minmax(0, 1fr);
