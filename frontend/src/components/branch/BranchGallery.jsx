@@ -1,5 +1,6 @@
 import { IconBuilding, IconChevronLeft, IconChevronRight } from "../icons";
 import { useCarousel } from "../../hooks/useCarousel";
+import { CarouselDots } from "../common/CarouselDots";
 import "../common/Carousel.css";
 import "./BranchGallery.css";
 
@@ -52,17 +53,7 @@ export function BranchGallery({ photos }) {
           <button type="button" className="carousel__nav carousel__nav--next" onClick={next} aria-label="รูปถัดไป">
             <IconChevronRight />
           </button>
-          <div className="carousel__dots">
-            {slides.map((src, i) => (
-              <button
-                key={src}
-                type="button"
-                className={`carousel__dot ${i === realIndex ? "is-active" : ""}`}
-                aria-label={`ไปรูปที่ ${i + 1}`}
-                onClick={() => goTo(i)}
-              />
-            ))}
-          </div>
+          <CarouselDots count={slideCount} activeIndex={realIndex} onSelect={goTo} />
         </>
       )}
     </div>
