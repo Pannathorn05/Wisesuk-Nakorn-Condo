@@ -2,7 +2,9 @@ import { Link } from "react-router-dom";
 import { Skeleton } from "../common/Skeleton";
 import { ErrorState } from "../common/ErrorState";
 import { EmptyState } from "../common/EmptyState";
-import { IconBed, IconArrowRight } from "../icons";
+import { ImageWithFallback } from "../common/ImageWithFallback";
+import { IconArrowRight } from "../icons";
+import { getStayTypePhoto } from "../../assets/branchPhotos";
 import { formatPrice } from "../../utils/formatPrice";
 import "./StayTypeSection.css";
 
@@ -63,7 +65,7 @@ export function StayTypeSection({ activeBranches, loading, error, refetch }) {
             {ranges.daily && (
               <Link to="/rooms?stay_type=daily" className="room-type-card">
                 <div className="room-type-card__image">
-                  <IconBed width={64} height={64} />
+                  <ImageWithFallback src={getStayTypePhoto("daily")} alt="ห้องพักรายวัน" />
                 </div>
                 <div className="room-type-card__body">
                   <h3>ห้องพักรายวัน</h3>
@@ -77,7 +79,7 @@ export function StayTypeSection({ activeBranches, loading, error, refetch }) {
             {ranges.monthly && (
               <Link to="/rooms?stay_type=monthly" className="room-type-card">
                 <div className="room-type-card__image">
-                  <IconBed width={64} height={64} />
+                  <ImageWithFallback src={getStayTypePhoto("monthly")} alt="ห้องพักรายเดือน" />
                 </div>
                 <div className="room-type-card__body">
                   <h3>ห้องพักรายเดือน</h3>

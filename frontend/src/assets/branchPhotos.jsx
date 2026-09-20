@@ -40,7 +40,7 @@ const BRANCH_PHOTOS = {
     "views/v-45-3.jpg",
     "views/v-45-2 (1).jpg",
     "days/d-45-1.jpg",
-    "days/d-45-2 (3).jpg",
+    "days/d-45-2.jpg",
     "month/m-45-1 (1).jpg",
     "month/m-45-2 (1).jpg",
     "month/m-45-3 (1).jpg",
@@ -66,6 +66,18 @@ export function getAllBranchPhotos() {
 
 export function getBranchCoverPhoto(slug) {
   return BRANCH_PHOTOS[slug]?.[0] || null;
+}
+
+// รูปตัวแทนของ "ประเภทห้องพัก" (รายวัน/รายเดือน) บนหน้าแรก — ไม่มี field รูปต่อ stay_type ใน backend
+// (RoomType.image_url ยังว่างทุกรายการ) จึงเลือกรูปห้องจริงจาก backend/uploads ที่ตรงประเภทนั้นมาโชว์
+// แทน placeholder ไอคอน เป็นรูปจากโฟลเดอร์ days/ กับ month/ ของสาขาประชาอุทิศ 45 ที่มีอยู่แล้ว
+const STAY_TYPE_PHOTOS = {
+  daily: uploadUrl("prachauthit-45", "days/d-45-2.jpg"),
+  monthly: uploadUrl("prachauthit-45", "month/m-45-3 (1).jpg"),
+};
+
+export function getStayTypePhoto(stayType) {
+  return STAY_TYPE_PHOTOS[stayType] || null;
 }
 
 // ใช้ทุกที่ที่ต้องโชว์รูปปกของสาขา — API มาก่อนเสมอถ้ามีจริง (backend เป็น source of truth)
