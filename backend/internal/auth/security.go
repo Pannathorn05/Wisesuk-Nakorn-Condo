@@ -18,6 +18,10 @@ import (
 var ErrInvalidToken = errors.New("auth: token ไม่ถูกต้องหรือหมดอายุ")
 
 // Claims คือ payload ของ access token
+//
+// BranchID มีค่าเฉพาะ role = admin ซึ่งผูกกับสาขาเดียวเสมอ
+// การแบกสาขามาใน token ทำให้ทุก request ไม่ต้องยิงถาม DB ซ้ำว่าคนนี้ดูแลสาขาไหน
+// แลกกับว่าการย้ายสาขาจะมีผลจริงเมื่อ access token ใบถัดไปถูกออก
 type Claims struct {
 	jwt.RegisteredClaims
 	Role     types.Role `json:"role"`
@@ -81,10 +85,10 @@ func (m *Manager) DummyVerify(plain string) {
 // รับเป็น struct เล็ก ๆ แทนที่จะรับ user ทั้งก้อน เพื่อไม่ให้ package auth
 // ต้องผูกกับ module ใด module หนึ่ง
 type Subject struct {
-	UserID   uuid.UUID
+	UserID   types.UserID
 	Role     types.Role
 	Name     string
-	BranchID *uuid.UUID
+	BranchID *types.BranchID
 }
 
 func (m *Manager) IssueAccessToken(s Subject) (string, time.Time, error) {

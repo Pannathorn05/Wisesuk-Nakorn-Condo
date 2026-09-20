@@ -72,7 +72,7 @@ func (h *Handler) ListMine(c *gin.Context) {
 func (h *Handler) Get(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	id, err := httpx.ParseUUID(c.Param("bookingID"))
+	id, err := httpx.ParseID[types.Booking](c.Param("bookingID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -90,7 +90,7 @@ func (h *Handler) Get(c *gin.Context) {
 func (h *Handler) SubmitPayment(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	bookingID, err := httpx.ParseUUID(c.Param("bookingID"))
+	bookingID, err := httpx.ParseID[types.Booking](c.Param("bookingID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -143,7 +143,7 @@ func (h *Handler) SubmitPayment(c *gin.Context) {
 func (h *Handler) Cancel(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	id, err := httpx.ParseUUID(c.Param("bookingID"))
+	id, err := httpx.ParseID[types.Booking](c.Param("bookingID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -162,7 +162,7 @@ func (h *Handler) Cancel(c *gin.Context) {
 func (h *Handler) ListForAdmin(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -201,7 +201,7 @@ func (h *Handler) Reject(c *gin.Context) { h.review(c, false) }
 func (h *Handler) review(c *gin.Context, approve bool) {
 	identity := middleware.MustIdentity(c)
 
-	id, err := httpx.ParseUUID(c.Param("bookingID"))
+	id, err := httpx.ParseID[types.Booking](c.Param("bookingID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -229,7 +229,7 @@ func (h *Handler) review(c *gin.Context, approve bool) {
 func (h *Handler) SetAppointment(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	id, err := httpx.ParseUUID(c.Param("bookingID"))
+	id, err := httpx.ParseID[types.Booking](c.Param("bookingID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -265,7 +265,7 @@ func (h *Handler) SetAppointment(c *gin.Context) {
 func (h *Handler) ListByMember(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	memberID, err := httpx.ParseUUID(c.Param("memberID"))
+	memberID, err := httpx.ParseID[types.User](c.Param("memberID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return

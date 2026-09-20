@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
 	"backend/internal/shared/types"
 )
@@ -42,8 +40,8 @@ func scan(row interface{ Scan(...any) error }) (*Room, error) {
 
 // SearchParams รองรับตัวกรองในหน้า "ค้นหาห้องพัก" ทั้งหมด
 type SearchParams struct {
-	BranchID     *uuid.UUID
-	RoomTypeID   *uuid.UUID
+	BranchID     *types.BranchID
+	RoomTypeID   *types.RoomTypeID
 	StayType     *types.StayType
 	CheckIn      *time.Time
 	CheckOut     *time.Time
@@ -132,15 +130,15 @@ func availabilityClause(checkIn, checkOut, moveIn string) string {
 	)`
 }
 
-func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*Room, error) {
+func (r *Repository) GetByID(ctx context.Context, id types.RoomID) (*Room, error) {
 	q := `SELECT ` + columns + joins + ` WHERE r.id = $1`
 	return scan(r.db.Executor(ctx).QueryRow(ctx, q, id))
 }
 
 // Lock ล็อกแถวห้อง (SELECT ... FOR UPDATE) ต้องเรียกภายใน transaction
 // คำขอจองที่เข้ามาพร้อมกันจะรอที่บรรทัดนี้ ทำให้ตรวจความว่างได้ถูกต้อง
-func (r *Repository) Lock(ctx context.Context, roomID uuid.UUID) (*Room, error) {
-	var id uuid.UUID
+func (r *Repository) Lock(ctx context.Context, roomID types.RoomID) (*Room, error) {
+	var id types.RoomID
 	if err := r.db.Executor(ctx).QueryRow(ctx,
 		`SELECT id FROM rooms WHERE id = $1 FOR UPDATE`, roomID).Scan(&id); err != nil {
 		return nil, database.NormalizeErr(err)
@@ -149,7 +147,7 @@ func (r *Repository) Lock(ctx context.Context, roomID uuid.UUID) (*Room, error) 
 }
 
 // IsAvailable ตรวจซ้ำอีกครั้งตอนกดจอง หลังจากล็อกแถวห้องไว้แล้ว
-func (r *Repository) IsAvailable(ctx context.Context, roomID uuid.UUID, checkIn, checkOut *time.Time) (bool, error) {
+func (r *Repository) IsAvailable(ctx context.Context, roomID types.RoomID, checkIn, checkOut *time.Time) (bool, error) {
 	const q = `
 		SELECT r.status = 'available' AND r.is_active AND NOT EXISTS (
 			SELECT 1 FROM bookings bk
@@ -170,8 +168,8 @@ func (r *Repository) IsAvailable(ctx context.Context, roomID uuid.UUID, checkIn,
 }
 
 type SaveParams struct {
-	BranchID     uuid.UUID
-	RoomTypeID   *uuid.UUID
+	BranchID     types.BranchID
+	RoomTypeID   *types.RoomTypeID
 	RoomNumber   string
 	Building     string
 	Floor        int
@@ -191,7 +189,7 @@ func (r *Repository) Create(ctx context.Context, p SaveParams) (*Room, error) {
 		                   price, water_rate, electric_rate, size_sqm, description, image_url, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, ''), $13)
 		RETURNING id`
-	var id uuid.UUID
+	var id types.RoomID
 	err := r.db.Executor(ctx).QueryRow(ctx, q,
 		p.BranchID, p.RoomTypeID, p.RoomNumber, p.Building, p.Floor, p.StayType,
 		p.Price, p.WaterRate, p.ElectricRate, p.SizeSqm, p.Description, p.ImageURL, p.Status,
@@ -203,7 +201,7 @@ func (r *Repository) Create(ctx context.Context, p SaveParams) (*Room, error) {
 }
 
 // Update จำกัดด้วย branch_id เสมอ แอดมินจึงแก้ได้เฉพาะห้องในสาขาตนเอง
-func (r *Repository) Update(ctx context.Context, id, branchID uuid.UUID, p SaveParams) (*Room, error) {
+func (r *Repository) Update(ctx context.Context, id types.RoomID, branchID types.BranchID, p SaveParams) (*Room, error) {
 	const q = `
 		UPDATE rooms SET
 			room_type_id = $3, room_number = $4, building = $5, floor = $6, stay_type = $7,
@@ -224,7 +222,7 @@ func (r *Repository) Update(ctx context.Context, id, branchID uuid.UUID, p SaveP
 }
 
 // UpdateImage แยกจาก Update เพราะการเปลี่ยนรูปห้องไม่ควรบังคับให้ส่งรายละเอียดห้องมาครบทั้งชุด
-func (r *Repository) UpdateImage(ctx context.Context, id, branchID uuid.UUID, url string) (*Room, error) {
+func (r *Repository) UpdateImage(ctx context.Context, id types.RoomID, branchID types.BranchID, url string) (*Room, error) {
 	tag, err := r.db.Executor(ctx).Exec(ctx,
 		`UPDATE rooms SET image_url = $3, updated_at = now() WHERE id = $1 AND branch_id = $2`,
 		id, branchID, url)
@@ -238,7 +236,7 @@ func (r *Repository) UpdateImage(ctx context.Context, id, branchID uuid.UUID, ur
 }
 
 // UpdateStatus ใช้กับปุ่มอัปเดตสถานะห้องแบบ real-time (ว่าง / มีผู้เช่า / ปิดปรับปรุง)
-func (r *Repository) UpdateStatus(ctx context.Context, id, branchID uuid.UUID, status RoomStatus) (*Room, error) {
+func (r *Repository) UpdateStatus(ctx context.Context, id types.RoomID, branchID types.BranchID, status RoomStatus) (*Room, error) {
 	tag, err := r.db.Executor(ctx).Exec(ctx,
 		`UPDATE rooms SET status = $3, updated_at = now() WHERE id = $1 AND branch_id = $2`,
 		id, branchID, status)
@@ -260,7 +258,7 @@ func (r *Repository) UpdateStatus(ctx context.Context, id, branchID uuid.UUID, s
 // ไม่งั้น NOT EXISTS จะยังเห็นใบที่กำลังถูกยกเลิกอยู่
 //
 // ไม่ตรวจ RowsAffected เพราะ "ไม่มีอะไรเปลี่ยน" คือผลลัพธ์ที่ถูกต้อง ไม่ใช่ error
-func (r *Repository) ReleaseIfIdle(ctx context.Context, roomID, branchID uuid.UUID) error {
+func (r *Repository) ReleaseIfIdle(ctx context.Context, roomID types.RoomID, branchID types.BranchID) error {
 	_, err := r.db.Executor(ctx).Exec(ctx, `
 		UPDATE rooms SET status = 'available', updated_at = now()
 		WHERE id = $1 AND branch_id = $2 AND status = 'occupied'
@@ -274,7 +272,7 @@ func (r *Repository) ReleaseIfIdle(ctx context.Context, roomID, branchID uuid.UU
 }
 
 // Delete เป็น soft delete เพื่อรักษาประวัติการจองที่อ้างถึงห้องนี้
-func (r *Repository) Delete(ctx context.Context, id, branchID uuid.UUID) error {
+func (r *Repository) Delete(ctx context.Context, id types.RoomID, branchID types.BranchID) error {
 	tag, err := r.db.Executor(ctx).Exec(ctx,
 		`UPDATE rooms SET is_active = FALSE, updated_at = now() WHERE id = $1 AND branch_id = $2`,
 		id, branchID)
@@ -289,10 +287,10 @@ func (r *Repository) Delete(ctx context.Context, id, branchID uuid.UUID) error {
 
 // ---------------------------------------------------------------- room types
 
-func (r *Repository) ListTypes(ctx context.Context, branchID *uuid.UUID) ([]RoomType, error) {
+func (r *Repository) ListTypes(ctx context.Context, branchID *types.BranchID) ([]RoomType, error) {
 	rows, err := r.db.Executor(ctx).Query(ctx,
 		`SELECT id, branch_id, name, description, size_sqm, image_url, sort_order
-		 FROM room_types WHERE ($1::uuid IS NULL OR branch_id = $1)
+		 FROM room_types WHERE ($1::bigint IS NULL OR branch_id = $1)
 		 ORDER BY sort_order, name`, branchID)
 	if err != nil {
 		return nil, err
@@ -313,7 +311,8 @@ func (r *Repository) ListTypes(ctx context.Context, branchID *uuid.UUID) ([]Room
 // ---------------------------------------------------------------- stats
 
 // StatsByBranch สรุปห้องว่างรายวัน/รายเดือน และจำนวนรายการที่รอตรวจสอบ (ใช้บนแดชบอร์ด)
-func (r *Repository) StatsByBranch(ctx context.Context, branchID *uuid.UUID) ([]BranchStats, error) {
+// StatsByBranch — branchID nil = ทุกสาขา (หัวหน้าผู้ดูแล)
+func (r *Repository) StatsByBranch(ctx context.Context, branchID *types.BranchID) ([]BranchStats, error) {
 	const q = `
 		SELECT b.id, b.name,
 		  COUNT(*) FILTER (WHERE r.stay_type = 'daily'   AND r.status = 'available')  AS daily_free,
@@ -325,7 +324,7 @@ func (r *Repository) StatsByBranch(ctx context.Context, branchID *uuid.UUID) ([]
 		  (SELECT COUNT(*) FROM bookings bk WHERE bk.branch_id = b.id)                AS bookings_total
 		FROM branches b
 		LEFT JOIN rooms r ON r.branch_id = b.id AND r.is_active
-		WHERE ($1::uuid IS NULL OR b.id = $1)
+		WHERE ($1::bigint IS NULL OR b.id = $1)
 		GROUP BY b.id, b.name, b.created_at
 		ORDER BY b.created_at`
 	rows, err := r.db.Executor(ctx).Query(ctx, q, branchID)

@@ -9,11 +9,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"backend/internal/database"
 	"backend/internal/httpx"
 	"backend/internal/shared/access"
+	"backend/internal/shared/types"
 )
 
 // formOverhead คือส่วนเผื่อของ multipart body ที่ไม่ใช่ตัวไฟล์ (boundary, ชื่อฟิลด์, ฟิลด์ข้อความ)
@@ -38,7 +38,7 @@ func NewDBStore(db *database.TxManager, publicBaseURL string, maxBytes int64) *D
 
 func (s *DBStore) MaxBytes() int64 { return s.maxBytes }
 
-func (s *DBStore) URL(id uuid.UUID) string { return s.baseURL + "/files/" + id.String() }
+func (s *DBStore) URL(id types.AssetID) string { return s.baseURL + "/files/" + id.String() }
 
 // SaveFromRequest ดึงไฟล์จาก multipart form field เดียวแล้วเก็บลงฐานข้อมูล คืน URL สาธารณะ
 //
@@ -87,7 +87,7 @@ func (s *DBStore) Save(ctx context.Context, file multipart.File, header *multipa
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (checksum) DO UPDATE SET checksum = EXCLUDED.checksum
 		RETURNING id`
-	var id uuid.UUID
+	var id types.AssetID
 	if err := s.db.Executor(ctx).QueryRow(ctx, q, contentType, len(data), checksum, data).Scan(&id); err != nil {
 		return "", httpx.ErrInternal.Wrap(err)
 	}
@@ -96,7 +96,7 @@ func (s *DBStore) Save(ctx context.Context, file multipart.File, header *multipa
 
 // Serve คือ GET /files/:assetID — เปิดสาธารณะเหมือนไฟล์ใน /uploads
 func (s *DBStore) Serve(c *gin.Context) {
-	id, err := httpx.ParseUUID(c.Param("assetID"))
+	id, err := httpx.ParseID[types.Asset](c.Param("assetID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return

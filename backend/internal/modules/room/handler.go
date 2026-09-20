@@ -24,7 +24,7 @@ func NewHandler(svc *Service, files *storage.DBStore) *Handler {
 func (h *Handler) UploadImage(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	roomID, err := httpx.ParseUUID(c.Param("roomID"))
+	roomID, err := httpx.ParseID[types.Room](c.Param("roomID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -49,10 +49,10 @@ func searchInputFrom(c *gin.Context) (SearchInput, error) {
 	var in SearchInput
 	var err error
 
-	if in.BranchID, err = httpx.QueryUUID(c, "branch_id"); err != nil {
+	if in.BranchID, err = httpx.QueryID[types.Branch](c, "branch_id"); err != nil {
 		return in, err
 	}
-	if in.RoomTypeID, err = httpx.QueryUUID(c, "room_type_id"); err != nil {
+	if in.RoomTypeID, err = httpx.QueryID[types.RoomType](c, "room_type_id"); err != nil {
 		return in, err
 	}
 	if in.StayType, err = queryStayType(c); err != nil {
@@ -90,7 +90,7 @@ func queryStayType(c *gin.Context) (*types.StayType, error) {
 
 // GET /api/v1/room-types?branch_id=
 func (h *Handler) ListTypes(c *gin.Context) {
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -127,7 +127,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 // GET /api/v1/rooms/:roomID
 func (h *Handler) Get(c *gin.Context) {
-	id, err := httpx.ParseUUID(c.Param("roomID"))
+	id, err := httpx.ParseID[types.Room](c.Param("roomID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -187,7 +187,7 @@ func (h *Handler) Create(c *gin.Context) {
 func (h *Handler) Update(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	id, err := httpx.ParseUUID(c.Param("roomID"))
+	id, err := httpx.ParseID[types.Room](c.Param("roomID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -210,7 +210,7 @@ func (h *Handler) Update(c *gin.Context) {
 func (h *Handler) UpdateStatus(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	id, err := httpx.ParseUUID(c.Param("roomID"))
+	id, err := httpx.ParseID[types.Room](c.Param("roomID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -235,7 +235,7 @@ func (h *Handler) UpdateStatus(c *gin.Context) {
 func (h *Handler) Delete(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	id, err := httpx.ParseUUID(c.Param("roomID"))
+	id, err := httpx.ParseID[types.Room](c.Param("roomID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return

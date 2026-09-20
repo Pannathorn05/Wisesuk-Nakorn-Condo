@@ -7,22 +7,23 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
+	"backend/internal/shared/types"
 	"backend/internal/timex"
 )
 
 // ตัวช่วยอ่าน query string ที่ทุก module ใช้ร่วมกัน
 // ทุกตัวคืน nil เมื่อไม่ได้ส่งค่ามา และคืน 400 พร้อมข้อความไทยเมื่อรูปแบบผิด
 
-func QueryUUID(c *gin.Context, key string) (*uuid.UUID, error) {
+func QueryID[E types.Entity](c *gin.Context, key string) (*types.ID[E], error) {
 	raw := strings.TrimSpace(c.Query(key))
 	if raw == "" {
 		return nil, nil
 	}
-	id, err := uuid.Parse(raw)
+	id, err := types.ParseID[E](raw)
 	if err != nil {
-		return nil, BadRequest("พารามิเตอร์ " + key + " ไม่ถูกต้อง").Wrap(err)
+		var zero types.ID[E]
+		return nil, BadRequest("พารามิเตอร์ " + key + " ต้องอยู่ในรูปแบบ " + zero.Prefix() + "-001").Wrap(err)
 	}
 	return &id, nil
 }

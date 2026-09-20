@@ -54,7 +54,7 @@ export function Footer() {
             <ul>
               {activeBranches.map((b) => (
                 <li key={b.id}>
-                  <Link to={`/branches/${b.id}`}>{b.name}</Link>
+                  <Link to={`/branches/${b.slug}`}>{b.name}</Link>
                 </li>
               ))}
             </ul>

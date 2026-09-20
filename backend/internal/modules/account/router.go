@@ -16,10 +16,11 @@ type Module struct {
 	Handler *Handler
 }
 
-func New(db *database.TxManager, authMgr *auth.Manager, rec *audit.Recorder, branches BranchChecker) *Module {
+func New(db *database.TxManager, authMgr *auth.Manager, rec *audit.Recorder, branches BranchChecker,
+	provider OAuthProvider, web WebConfig, staffDefaultPassword string) *Module {
 	repo := NewRepository(db)
-	svc := NewService(repo, authMgr, rec, branches)
-	return &Module{Repo: repo, Service: svc, Handler: NewHandler(svc)}
+	svc := NewService(repo, db, authMgr, rec, branches, staffDefaultPassword)
+	return &Module{Repo: repo, Service: svc, Handler: NewHandler(svc, provider, web)}
 }
 
 // PublicRoutes — ไม่ต้องเข้าสู่ระบบ
@@ -28,6 +29,13 @@ func (m *Module) PublicRoutes(r gin.IRoutes) {
 	r.POST("/auth/login", m.Handler.Login)
 	r.POST("/auth/refresh", m.Handler.Refresh)
 	r.POST("/auth/logout", m.Handler.Logout)
+
+	// เข้าสู่ระบบด้วยบัญชีภายนอก — สองเส้นทางแรกเป็น GET เพราะเบราว์เซอร์เดินทางเอง
+	// ส่วน exchange เป็น POST เพราะ frontend เรียกด้วย fetch
+	r.GET("/auth/oauth", m.Handler.OAuthProviders)
+	r.GET("/auth/oauth/:provider", m.Handler.OAuthStart)
+	r.GET("/auth/oauth/:provider/callback", m.Handler.OAuthCallback)
+	r.POST("/auth/oauth/exchange", m.Handler.OAuthExchange)
 }
 
 // AuthedRoutes — เข้าสู่ระบบแล้ว ทุกสิทธิ์

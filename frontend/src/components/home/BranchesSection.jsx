@@ -39,7 +39,7 @@ export function BranchesSection({ activeBranches, loading, error, refetch }) {
         {!loading && !error && activeBranches.length > 0 && (
           <div className="branches-section__grid">
             {activeBranches.map((branch) => (
-              <Link to={`/branches/${branch.id}`} className="branch-card" key={branch.id}>
+              <Link to={`/branches/${branch.slug}`} className="branch-card" key={branch.id}>
                 <div className="branch-card__image">
                   <ImageWithFallback src={getBranchCover(branch)} alt={branch.name} />
                 </div>

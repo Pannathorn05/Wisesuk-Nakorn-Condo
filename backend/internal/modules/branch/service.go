@@ -5,11 +5,10 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-
 	"backend/internal/middleware"
 	"backend/internal/shared/access"
 	"backend/internal/shared/audit"
+	"backend/internal/shared/types"
 	"backend/internal/validate"
 )
 
@@ -37,7 +36,7 @@ func (s *Service) List(ctx context.Context, includeInactive bool) ([]Branch, err
 	return branches, nil
 }
 
-func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Branch, error) {
+func (s *Service) Get(ctx context.Context, id types.BranchID) (*Branch, error) {
 	b, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, access.MapErr(err)
@@ -60,12 +59,12 @@ func (s *Service) GetBySlug(ctx context.Context, slug string) (*Branch, error) {
 }
 
 // Exists ทำให้ Service ใช้เป็น account.BranchChecker ได้
-func (s *Service) Exists(ctx context.Context, id uuid.UUID) (bool, error) {
+func (s *Service) Exists(ctx context.Context, id types.BranchID) (bool, error) {
 	return s.repo.Exists(ctx, id)
 }
 
 // ContractFee คือค่ายืนยันการทำสัญญาที่ module booking ใช้คิดยอดของการจองรายเดือน
-func (s *Service) ContractFee(ctx context.Context, branchID uuid.UUID) (float64, error) {
+func (s *Service) ContractFee(ctx context.Context, branchID types.BranchID) (float64, error) {
 	b, err := s.repo.GetByID(ctx, branchID)
 	if err != nil {
 		return 0, access.MapErr(err)
@@ -104,7 +103,7 @@ type UpdateInput struct {
 	CoverImageURL   *string  `json:"cover_image_url"`
 }
 
-func (s *Service) Update(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, in UpdateInput, ip string) (*Branch, error) {
+func (s *Service) Update(ctx context.Context, identity middleware.Identity, branchID *types.BranchID, in UpdateInput, ip string) (*Branch, error) {
 	id, err := access.RequireBranch(identity, branchID)
 	if err != nil {
 		return nil, err
@@ -141,11 +140,11 @@ func (s *Service) Update(ctx context.Context, identity middleware.Identity, bran
 		return nil, access.MapErr(err)
 	}
 
-	s.record(ctx, identity, "branch.update", "branch", id.String(), map[string]any{"name": name}, ip)
+	s.record(ctx, identity, id, "branch.update", "branch", id.String(), map[string]any{"name": name}, ip)
 	return s.Get(ctx, id)
 }
 
-func (s *Service) SetAmenities(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, amenityIDs []uuid.UUID, ip string) ([]Amenity, error) {
+func (s *Service) SetAmenities(ctx context.Context, identity middleware.Identity, branchID *types.BranchID, amenityIDs []types.AmenityID, ip string) ([]Amenity, error) {
 	id, err := access.RequireBranch(identity, branchID)
 	if err != nil {
 		return nil, err
@@ -153,14 +152,14 @@ func (s *Service) SetAmenities(ctx context.Context, identity middleware.Identity
 	if err := s.repo.SetAmenities(ctx, id, amenityIDs); err != nil {
 		return nil, access.MapErr(err)
 	}
-	s.record(ctx, identity, "branch.set_amenities", "branch", id.String(),
+	s.record(ctx, identity, id, "branch.set_amenities", "branch", id.String(),
 		map[string]any{"count": len(amenityIDs)}, ip)
 
 	items, err := s.repo.ListAmenities(ctx, id)
 	return items, access.MapErr(err)
 }
 
-func (s *Service) ReplaceNearby(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, items []NearbyInput, ip string) ([]NearbyPlace, error) {
+func (s *Service) ReplaceNearby(ctx context.Context, identity middleware.Identity, branchID *types.BranchID, items []NearbyInput, ip string) ([]NearbyPlace, error) {
 	id, err := access.RequireBranch(identity, branchID)
 	if err != nil {
 		return nil, err
@@ -180,7 +179,7 @@ func (s *Service) ReplaceNearby(ctx context.Context, identity middleware.Identit
 	if err := s.repo.ReplaceNearby(ctx, id, items); err != nil {
 		return nil, access.MapErr(err)
 	}
-	s.record(ctx, identity, "branch.update_nearby", "branch", id.String(),
+	s.record(ctx, identity, id, "branch.update_nearby", "branch", id.String(),
 		map[string]any{"count": len(items)}, ip)
 
 	places, err := s.repo.ListNearby(ctx, id)
@@ -188,7 +187,7 @@ func (s *Service) ReplaceNearby(ctx context.Context, identity middleware.Identit
 }
 
 // SetCoverImage ใช้กับปุ่มเปลี่ยนรูปปกสาขา ซึ่งอัปโหลดรูปอย่างเดียวไม่ได้แก้ฟิลด์อื่น
-func (s *Service) SetCoverImage(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, url, ip string) (*Branch, error) {
+func (s *Service) SetCoverImage(ctx context.Context, identity middleware.Identity, branchID *types.BranchID, url, ip string) (*Branch, error) {
 	id, err := access.RequireBranch(identity, branchID)
 	if err != nil {
 		return nil, err
@@ -202,11 +201,11 @@ func (s *Service) SetCoverImage(ctx context.Context, identity middleware.Identit
 	if err := s.repo.UpdateCoverImage(ctx, id, url); err != nil {
 		return nil, access.MapErr(err)
 	}
-	s.record(ctx, identity, "branch.update_cover", "branch", id.String(), nil, ip)
+	s.record(ctx, identity, id, "branch.update_cover", "branch", id.String(), nil, ip)
 	return s.Get(ctx, id)
 }
 
-func (s *Service) AddImage(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, url, caption string, sortOrder int, ip string) (*BranchImage, error) {
+func (s *Service) AddImage(ctx context.Context, identity middleware.Identity, branchID *types.BranchID, url, caption string, sortOrder int, ip string) (*BranchImage, error) {
 	id, err := access.RequireBranch(identity, branchID)
 	if err != nil {
 		return nil, err
@@ -225,11 +224,11 @@ func (s *Service) AddImage(ctx context.Context, identity middleware.Identity, br
 	if err != nil {
 		return nil, access.MapErr(err)
 	}
-	s.record(ctx, identity, "branch.add_image", "branch_image", img.ID.String(), nil, ip)
+	s.record(ctx, identity, id, "branch.add_image", "branch_image", img.ID.String(), nil, ip)
 	return img, nil
 }
 
-func (s *Service) DeleteImage(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, imageID uuid.UUID, ip string) error {
+func (s *Service) DeleteImage(ctx context.Context, identity middleware.Identity, branchID *types.BranchID, imageID types.BranchImageID, ip string) error {
 	id, err := access.RequireBranch(identity, branchID)
 	if err != nil {
 		return err
@@ -237,15 +236,20 @@ func (s *Service) DeleteImage(ctx context.Context, identity middleware.Identity,
 	if err := s.repo.DeleteImage(ctx, id, imageID); err != nil {
 		return access.MapErr(err)
 	}
-	s.record(ctx, identity, "branch.delete_image", "branch_image", imageID.String(), nil, ip)
+	s.record(ctx, identity, id, "branch.delete_image", "branch_image", imageID.String(), nil, ip)
 	return nil
 }
 
-func (s *Service) record(ctx context.Context, identity middleware.Identity, action, entityType, entityID string, detail map[string]any, ip string) {
+// record บันทึก activity log โดยผูกกับ "สาขาที่ถูกกระทำ" ไม่ใช่สาขาของผู้กระทำ
+//
+// ต่างกันจริงตั้งแต่ผู้ดูแลหนึ่งคนดูแลได้หลายสาขา — ถ้าผูกกับผู้กระทำ จะบอกไม่ได้ว่า
+// การแก้ครั้งนี้ลงที่สาขาไหน แล้วตัวกรองสาขาในหน้าประวัติการใช้งานก็ใช้ไม่ได้
+func (s *Service) record(ctx context.Context, identity middleware.Identity, branchID types.BranchID,
+	action, entityType, entityID string, detail map[string]any, ip string) {
 	actorID := identity.UserID
 	s.audit.Record(ctx, audit.Entry{
 		ActorID: &actorID, ActorRole: identity.Role, ActorName: identity.Name,
-		BranchID: identity.BranchID, Action: action,
+		BranchID: &branchID, Action: action,
 		EntityType: entityType, EntityID: entityID, Detail: detail, IPAddress: ip,
 	})
 }

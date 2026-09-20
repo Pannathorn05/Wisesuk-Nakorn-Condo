@@ -7,37 +7,45 @@ package access
 import (
 	"errors"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
 	"backend/internal/httpx"
 	"backend/internal/middleware"
+	"backend/internal/shared/types"
 )
 
 // Branch คืนสาขาที่ผู้เรียกมีสิทธิ์เข้าถึง
-//   - super admin: เข้าถึงได้ทุกสาขา (nil = ไม่จำกัด) หรือจะระบุสาขาที่ขอมาก็ได้
+//   - super admin: ไม่ระบุ = ทุกสาขา (nil) · ระบุ = เฉพาะสาขานั้น
 //   - admin: ถูกบังคับเป็นสาขาของตัวเองเสมอ และถูกปฏิเสธถ้าขอสาขาอื่น
-func Branch(identity middleware.Identity, requested *uuid.UUID) (*uuid.UUID, error) {
-	if identity.IsSuperAdmin() {
+//
+// ค่า nil ที่คืนออกไปแปลว่า "ไม่จำกัดสาขา" เท่านั้น ห้ามใช้แทนความหมาย
+// "ไม่มีสาขาให้เห็น" เด็ดขาด — กรณีนั้นคืน error ไปแล้วตั้งแต่ในนี้
+func Branch(identity middleware.Identity, requested *types.BranchID) (*types.BranchID, error) {
+	if requested != nil {
+		if !identity.HasBranch(*requested) {
+			return nil, httpx.ErrForbidden
+		}
 		return requested, nil
 	}
-	if identity.BranchID == nil {
-		return nil, httpx.ErrForbidden
+	if identity.IsSuperAdmin() {
+		return nil, nil
 	}
-	if requested != nil && *requested != *identity.BranchID {
+	if identity.BranchID == nil {
 		return nil, httpx.ErrForbidden
 	}
 	return identity.BranchID, nil
 }
 
 // RequireBranch บังคับว่าต้องระบุสาขาชัดเจน ใช้กับ endpoint ที่แก้ไขข้อมูลของสาขา
-func RequireBranch(identity middleware.Identity, requested *uuid.UUID) (uuid.UUID, error) {
+//
+// หัวหน้าผู้ดูแลที่ไม่ได้ส่ง branch_id มาจะถูกปฏิเสธ เพราะคำสั่งแก้ไขต้องรู้ว่า
+// หมายถึงสาขาไหน ไม่ใช่ไปลงทุกสาขาพร้อมกัน
+func RequireBranch(identity middleware.Identity, requested *types.BranchID) (types.BranchID, error) {
 	scoped, err := Branch(identity, requested)
 	if err != nil {
-		return uuid.Nil, err
+		return 0, err
 	}
 	if scoped == nil {
-		return uuid.Nil, httpx.BadRequest("กรุณาระบุสาขา (branch_id)")
+		return 0, httpx.BadRequest("กรุณาระบุสาขา (branch_id)")
 	}
 	return *scoped, nil
 }

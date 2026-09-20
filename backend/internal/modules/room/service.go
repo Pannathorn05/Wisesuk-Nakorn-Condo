@@ -4,8 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
 	"backend/internal/httpx"
 	"backend/internal/middleware"
@@ -25,8 +23,8 @@ func NewService(repo *Repository, rec *audit.Recorder) *Service {
 }
 
 type SearchInput struct {
-	BranchID   *uuid.UUID
-	RoomTypeID *uuid.UUID
+	BranchID   *types.BranchID
+	RoomTypeID *types.RoomTypeID
 	StayType   *types.StayType
 	CheckIn    *time.Time
 	CheckOut   *time.Time
@@ -57,17 +55,18 @@ func (s *Service) Search(ctx context.Context, in SearchInput) ([]Room, int, erro
 	return rooms, total, access.MapErr(err)
 }
 
-func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Room, error) {
+func (s *Service) Get(ctx context.Context, id types.RoomID) (*Room, error) {
 	rm, err := s.repo.GetByID(ctx, id)
 	return rm, access.MapErr(err)
 }
 
-func (s *Service) ListTypes(ctx context.Context, branchID *uuid.UUID) ([]RoomType, error) {
+func (s *Service) ListTypes(ctx context.Context, branchID *types.BranchID) ([]RoomType, error) {
 	types, err := s.repo.ListTypes(ctx, branchID)
 	return types, access.MapErr(err)
 }
 
-func (s *Service) Stats(ctx context.Context, branchID *uuid.UUID) ([]BranchStats, error) {
+// Stats คืนตัวเลขรายสาขาบนแดชบอร์ด — branchID nil = ทุกสาขา
+func (s *Service) Stats(ctx context.Context, branchID *types.BranchID) ([]BranchStats, error) {
 	stats, err := s.repo.StatsByBranch(ctx, branchID)
 	return stats, access.MapErr(err)
 }
@@ -75,25 +74,25 @@ func (s *Service) Stats(ctx context.Context, branchID *uuid.UUID) ([]BranchStats
 // ---------------------------------------------------------------- ใช้โดย module booking
 
 // LockForBooking ล็อกห้องและคืนข้อมูลห้อง ต้องเรียกใน transaction ของผู้เรียก
-func (s *Service) LockForBooking(ctx context.Context, roomID uuid.UUID) (*Room, error) {
+func (s *Service) LockForBooking(ctx context.Context, roomID types.RoomID) (*Room, error) {
 	rm, err := s.repo.Lock(ctx, roomID)
 	return rm, access.MapErr(err)
 }
 
-func (s *Service) IsAvailable(ctx context.Context, roomID uuid.UUID, checkIn, checkOut *time.Time) (bool, error) {
+func (s *Service) IsAvailable(ctx context.Context, roomID types.RoomID, checkIn, checkOut *time.Time) (bool, error) {
 	ok, err := s.repo.IsAvailable(ctx, roomID, checkIn, checkOut)
 	return ok, access.MapErr(err)
 }
 
 // MarkOccupied ใช้เมื่ออนุมัติการจองรายเดือน
-func (s *Service) MarkOccupied(ctx context.Context, roomID, branchID uuid.UUID) error {
+func (s *Service) MarkOccupied(ctx context.Context, roomID types.RoomID, branchID types.BranchID) error {
 	_, err := s.repo.UpdateStatus(ctx, roomID, branchID, RoomOccupied)
 	return access.MapErr(err)
 }
 
 // ReleaseIfIdle เป็นคู่ตรงข้ามของ MarkOccupied — ใช้เมื่อการจองที่ถือห้องอยู่จบลง
 // (ยกเลิก / หมดสัญญา) ห้องจะกลับมาปล่อยเช่าได้เฉพาะเมื่อไม่มีใบอื่นถืออยู่แล้ว
-func (s *Service) ReleaseIfIdle(ctx context.Context, roomID, branchID uuid.UUID) error {
+func (s *Service) ReleaseIfIdle(ctx context.Context, roomID types.RoomID, branchID types.BranchID) error {
 	return access.MapErr(s.repo.ReleaseIfIdle(ctx, roomID, branchID))
 }
 
@@ -115,19 +114,19 @@ func (s *Service) ListForAdmin(ctx context.Context, identity middleware.Identity
 }
 
 type SaveInput struct {
-	BranchID     *uuid.UUID `json:"branch_id"`
-	RoomTypeID   *uuid.UUID `json:"room_type_id"`
-	RoomNumber   string     `json:"room_number"`
-	Building     string     `json:"building"`
-	Floor        int        `json:"floor"`
-	StayType     string     `json:"stay_type"`
-	Price        float64    `json:"price"`
-	WaterRate    float64    `json:"water_rate"`
-	ElectricRate float64    `json:"electric_rate"`
-	SizeSqm      *float64   `json:"size_sqm"`
-	Description  string     `json:"description"`
-	ImageURL     *string    `json:"image_url"`
-	Status       string     `json:"status"`
+	BranchID     *types.BranchID   `json:"branch_id"`
+	RoomTypeID   *types.RoomTypeID `json:"room_type_id"`
+	RoomNumber   string            `json:"room_number"`
+	Building     string            `json:"building"`
+	Floor        int               `json:"floor"`
+	StayType     string            `json:"stay_type"`
+	Price        float64           `json:"price"`
+	WaterRate    float64           `json:"water_rate"`
+	ElectricRate float64           `json:"electric_rate"`
+	SizeSqm      *float64          `json:"size_sqm"`
+	Description  string            `json:"description"`
+	ImageURL     *string           `json:"image_url"`
+	Status       string            `json:"status"`
 }
 
 func (in SaveInput) validated() (SaveParams, error) {
@@ -189,12 +188,12 @@ func (s *Service) Create(ctx context.Context, identity middleware.Identity, in S
 		return nil, access.MapErr(err)
 	}
 
-	s.record(ctx, identity, "room.create", rm.ID.String(),
+	s.record(ctx, identity, branchID, "room.create", rm.ID.String(),
 		map[string]any{"room_number": rm.RoomNumber}, ip)
 	return rm, nil
 }
 
-func (s *Service) Update(ctx context.Context, identity middleware.Identity, roomID uuid.UUID, in SaveInput, ip string) (*Room, error) {
+func (s *Service) Update(ctx context.Context, identity middleware.Identity, roomID types.RoomID, in SaveInput, ip string) (*Room, error) {
 	branchID, err := s.branchOf(ctx, identity, roomID)
 	if err != nil {
 		return nil, err
@@ -213,13 +212,13 @@ func (s *Service) Update(ctx context.Context, identity middleware.Identity, room
 		return nil, access.MapErr(err)
 	}
 
-	s.record(ctx, identity, "room.update", rm.ID.String(),
+	s.record(ctx, identity, branchID, "room.update", rm.ID.String(),
 		map[string]any{"room_number": rm.RoomNumber}, ip)
 	return rm, nil
 }
 
 // SetImage ใช้กับปุ่มอัปโหลดรูปห้อง ซึ่งเปลี่ยนรูปอย่างเดียวไม่ได้แก้ฟิลด์อื่น
-func (s *Service) SetImage(ctx context.Context, identity middleware.Identity, roomID uuid.UUID, url, ip string) (*Room, error) {
+func (s *Service) SetImage(ctx context.Context, identity middleware.Identity, roomID types.RoomID, url, ip string) (*Room, error) {
 	branchID, err := s.branchOf(ctx, identity, roomID)
 	if err != nil {
 		return nil, err
@@ -236,13 +235,13 @@ func (s *Service) SetImage(ctx context.Context, identity middleware.Identity, ro
 		return nil, access.MapErr(err)
 	}
 
-	s.record(ctx, identity, "room.update_image", rm.ID.String(),
+	s.record(ctx, identity, branchID, "room.update_image", rm.ID.String(),
 		map[string]any{"room_number": rm.RoomNumber}, ip)
 	return rm, nil
 }
 
 // UpdateStatus คือปุ่มอัปเดตสถานะห้องแบบ real-time ในหน้าจัดการห้องพัก
-func (s *Service) UpdateStatus(ctx context.Context, identity middleware.Identity, roomID uuid.UUID, status string, ip string) (*Room, error) {
+func (s *Service) UpdateStatus(ctx context.Context, identity middleware.Identity, roomID types.RoomID, status string, ip string) (*Room, error) {
 	branchID, err := s.branchOf(ctx, identity, roomID)
 	if err != nil {
 		return nil, err
@@ -260,12 +259,12 @@ func (s *Service) UpdateStatus(ctx context.Context, identity middleware.Identity
 		return nil, access.MapErr(err)
 	}
 
-	s.record(ctx, identity, "room.update_status", rm.ID.String(),
+	s.record(ctx, identity, branchID, "room.update_status", rm.ID.String(),
 		map[string]any{"room_number": rm.RoomNumber, "status": string(st)}, ip)
 	return rm, nil
 }
 
-func (s *Service) Delete(ctx context.Context, identity middleware.Identity, roomID uuid.UUID, ip string) error {
+func (s *Service) Delete(ctx context.Context, identity middleware.Identity, roomID types.RoomID, ip string) error {
 	branchID, err := s.branchOf(ctx, identity, roomID)
 	if err != nil {
 		return err
@@ -273,24 +272,27 @@ func (s *Service) Delete(ctx context.Context, identity middleware.Identity, room
 	if err := s.repo.Delete(ctx, roomID, branchID); err != nil {
 		return access.MapErr(err)
 	}
-	s.record(ctx, identity, "room.delete", roomID.String(), nil, ip)
+	s.record(ctx, identity, branchID, "room.delete", roomID.String(), nil, ip)
 	return nil
 }
 
 // branchOf คืนสาขาของห้อง หลังยืนยันแล้วว่าผู้เรียกมีสิทธิ์กับสาขานั้น
-func (s *Service) branchOf(ctx context.Context, identity middleware.Identity, roomID uuid.UUID) (uuid.UUID, error) {
+func (s *Service) branchOf(ctx context.Context, identity middleware.Identity, roomID types.RoomID) (types.BranchID, error) {
 	rm, err := s.repo.GetByID(ctx, roomID)
 	if err != nil {
-		return uuid.Nil, access.MapErr(err)
+		return 0, access.MapErr(err)
 	}
 	return access.RequireBranch(identity, &rm.BranchID)
 }
 
-func (s *Service) record(ctx context.Context, identity middleware.Identity, action, entityID string, detail map[string]any, ip string) {
+// record ผูก log กับสาขาของห้องที่ถูกกระทำ ไม่ใช่สาขาของผู้กระทำ
+// (ผู้ดูแลหนึ่งคนดูแลได้หลายสาขา สาขาของผู้กระทำจึงไม่ได้บอกว่าลงมือที่ไหน)
+func (s *Service) record(ctx context.Context, identity middleware.Identity, branchID types.BranchID,
+	action, entityID string, detail map[string]any, ip string) {
 	actorID := identity.UserID
 	s.audit.Record(ctx, audit.Entry{
 		ActorID: &actorID, ActorRole: identity.Role, ActorName: identity.Name,
-		BranchID: identity.BranchID, Action: action,
+		BranchID: &branchID, Action: action,
 		EntityType: "room", EntityID: entityID, Detail: detail, IPAddress: ip,
 	})
 }

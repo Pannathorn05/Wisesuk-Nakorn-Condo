@@ -18,6 +18,7 @@ import (
 	"backend/internal/modules/branch"
 	"backend/internal/modules/reporting"
 	"backend/internal/modules/room"
+	"backend/internal/oauth"
 	"backend/internal/shared/audit"
 	"backend/internal/storage"
 )
@@ -49,8 +50,22 @@ func New(cfg *config.Config, pool *pgxpool.Pool, files *storage.LocalStore) *Ser
 	//   account -> ใช้ branch ตรวจว่าสาขาที่จะผูกให้แอดมินมีจริง
 	//   room    -> ไม่พึ่งใคร
 	//   booking -> ใช้ room (ล็อก/ตรวจว่าง), branch (ค่าธรรมเนียม), account (แจ้งเตือน)
+	// ผู้ให้บริการล็อกอินภายนอก — เปิดเฉพาะเจ้าที่ตั้ง client id/secret ไว้ครบ
+	oauthMgr := oauth.New(oauth.Config{
+		GoogleClientID:       cfg.GoogleClientID,
+		GoogleClientSecret:   cfg.GoogleClientSecret,
+		FacebookClientID:     cfg.FacebookClientID,
+		FacebookClientSecret: cfg.FacebookClientSecret,
+		CallbackBaseURL:      cfg.PublicBaseURL,
+	})
+	web := account.WebConfig{
+		FrontendCallbackURL: cfg.FrontendOAuthCallbackURL,
+		// cookie ที่ตั้ง Secure ไว้จะไม่ถูกส่งกลับมาบน http ธรรมดา ตอน dev จึงต้องปิด
+		SecureCookies: cfg.IsProduction(),
+	}
+
 	branchMod := branch.New(db, rec, assets)
-	accountMod := account.New(db, authMgr, rec, branchMod.Service)
+	accountMod := account.New(db, authMgr, rec, branchMod.Service, oauthMgr, web, cfg.StaffDefaultPassword)
 	roomMod := room.New(db, rec, assets)
 	bookingMod := booking.New(db, roomMod.Service, branchMod.Service, accountMod.Service, rec, files)
 	reportingMod := reporting.New(db, roomMod.Service, bookingMod.Service)

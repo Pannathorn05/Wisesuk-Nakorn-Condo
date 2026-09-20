@@ -5,8 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
 	"backend/internal/httpx"
 	"backend/internal/middleware"
@@ -22,18 +20,18 @@ import (
 // ประกาศไว้ฝั่งผู้ใช้งาน ทำให้ booking ไม่ต้องผูกกับ module เหล่านั้นตรง ๆ
 // และทดสอบแยกได้ด้วยการใส่ของปลอมเข้ามาแทน
 type Rooms interface {
-	LockForBooking(ctx context.Context, roomID uuid.UUID) (*room.Room, error)
-	IsAvailable(ctx context.Context, roomID uuid.UUID, checkIn, checkOut *time.Time) (bool, error)
-	MarkOccupied(ctx context.Context, roomID, branchID uuid.UUID) error
-	ReleaseIfIdle(ctx context.Context, roomID, branchID uuid.UUID) error
+	LockForBooking(ctx context.Context, roomID types.RoomID) (*room.Room, error)
+	IsAvailable(ctx context.Context, roomID types.RoomID, checkIn, checkOut *time.Time) (bool, error)
+	MarkOccupied(ctx context.Context, roomID types.RoomID, branchID types.BranchID) error
+	ReleaseIfIdle(ctx context.Context, roomID types.RoomID, branchID types.BranchID) error
 }
 
 type Branches interface {
-	ContractFee(ctx context.Context, branchID uuid.UUID) (float64, error)
+	ContractFee(ctx context.Context, branchID types.BranchID) (float64, error)
 }
 
 type Notifier interface {
-	Notify(ctx context.Context, userID uuid.UUID, title, body, link string)
+	Notify(ctx context.Context, userID types.UserID, title, body, link string)
 }
 
 type Service struct {
@@ -70,8 +68,8 @@ var (
 )
 
 type CreateInput struct {
-	RoomID   uuid.UUID `json:"room_id"`
-	StayType string    `json:"stay_type"`
+	RoomID   types.RoomID `json:"room_id"`
+	StayType string       `json:"stay_type"`
 
 	GuestFirstName    string `json:"guest_first_name"`
 	GuestLastName     string `json:"guest_last_name"`
@@ -101,7 +99,7 @@ func (s *Service) Create(ctx context.Context, identity middleware.Identity, in C
 
 	stayType := types.StayType(in.StayType)
 	v.Check(stayType.Valid(), "stay_type", "ประเภทการเข้าพักต้องเป็น daily หรือ monthly")
-	v.Check(in.RoomID != uuid.Nil, "room_id", "กรุณาเลือกห้องพัก")
+	v.Check(in.RoomID != 0, "room_id", "กรุณาเลือกห้องพัก")
 
 	var checkIn, checkOut, moveIn, contractDate *time.Time
 	var nights *int
@@ -176,7 +174,7 @@ func (s *Service) Create(ctx context.Context, identity middleware.Identity, in C
 		return nil, err
 	}
 
-	s.record(ctx, identity, "booking.create", created.ID.String(),
+	s.record(ctx, identity, created.BranchID, "booking.create", created.ID.String(),
 		map[string]any{"code": created.Code, "stay_type": string(stayType)}, ip)
 	s.notifier.Notify(ctx, identity.UserID,
 		"สร้างรายการจองสำเร็จ",
@@ -211,7 +209,7 @@ func (s *Service) ListMine(ctx context.Context, identity middleware.Identity, st
 }
 
 // Get บังคับสิทธิ์: สมาชิกเห็นเฉพาะของตัวเอง, แอดมินเห็นเฉพาะสาขาตัวเอง
-func (s *Service) Get(ctx context.Context, identity middleware.Identity, id uuid.UUID) (*Booking, error) {
+func (s *Service) Get(ctx context.Context, identity middleware.Identity, id types.BookingID) (*Booking, error) {
 	b, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, access.MapErr(err)
@@ -230,7 +228,7 @@ func canAccess(identity middleware.Identity, b *Booking) error {
 	case types.RoleSuperAdmin:
 		return nil
 	case types.RoleAdmin:
-		if identity.BranchID != nil && *identity.BranchID == b.BranchID {
+		if identity.HasBranch(b.BranchID) {
 			return nil
 		}
 		return httpx.ErrForbidden
@@ -251,7 +249,7 @@ type SubmitPaymentInput struct {
 }
 
 // SubmitPayment รับสลิปจากสมาชิก แล้วเปลี่ยนสถานะการจองเป็น "รอตรวจสอบ"
-func (s *Service) SubmitPayment(ctx context.Context, identity middleware.Identity, bookingID uuid.UUID, in SubmitPaymentInput, ip string) (*Booking, error) {
+func (s *Service) SubmitPayment(ctx context.Context, identity middleware.Identity, bookingID types.BookingID, in SubmitPaymentInput, ip string) (*Booking, error) {
 	b, err := s.repo.GetByID(ctx, bookingID)
 	if err != nil {
 		return nil, access.MapErr(err)
@@ -297,7 +295,7 @@ func (s *Service) SubmitPayment(ctx context.Context, identity middleware.Identit
 		updated.LatestPayment = p
 	}
 
-	s.record(ctx, identity, "booking.submit_payment", b.ID.String(),
+	s.record(ctx, identity, b.BranchID, "booking.submit_payment", b.ID.String(),
 		map[string]any{"code": b.Code, "amount": in.Amount}, ip)
 	s.notifier.Notify(ctx, identity.UserID,
 		"ส่งหลักฐานการชำระเงินแล้ว",
@@ -307,7 +305,7 @@ func (s *Service) SubmitPayment(ctx context.Context, identity middleware.Identit
 	return updated, nil
 }
 
-func (s *Service) Cancel(ctx context.Context, identity middleware.Identity, bookingID uuid.UUID, ip string) (*Booking, error) {
+func (s *Service) Cancel(ctx context.Context, identity middleware.Identity, bookingID types.BookingID, ip string) (*Booking, error) {
 	b, err := s.repo.GetByID(ctx, bookingID)
 	if err != nil {
 		return nil, access.MapErr(err)
@@ -338,7 +336,7 @@ func (s *Service) Cancel(ctx context.Context, identity middleware.Identity, book
 		return nil, err
 	}
 
-	s.record(ctx, identity, "booking.cancel", b.ID.String(), map[string]any{"code": b.Code}, ip)
+	s.record(ctx, identity, b.BranchID, "booking.cancel", b.ID.String(), map[string]any{"code": b.Code}, ip)
 	s.notifier.Notify(ctx, b.UserID, "รายการจองถูกยกเลิก",
 		"รายการจอง "+b.Code+" ถูกยกเลิกแล้ว", "/bookings/"+b.ID.String())
 
@@ -347,7 +345,7 @@ func (s *Service) Cancel(ctx context.Context, identity middleware.Identity, book
 
 // ---------------------------------------------------------------- admin
 
-func (s *Service) ListForAdmin(ctx context.Context, identity middleware.Identity, branchID *uuid.UUID, status *BookingStatus, stayType *types.StayType, search string, limit, offset int) ([]Booking, int, error) {
+func (s *Service) ListForAdmin(ctx context.Context, identity middleware.Identity, branchID *types.BranchID, status *BookingStatus, stayType *types.StayType, search string, limit, offset int) ([]Booking, int, error) {
 	scoped, err := access.Branch(identity, branchID)
 	if err != nil {
 		return nil, 0, err
@@ -365,7 +363,7 @@ func (s *Service) ListForAdmin(ctx context.Context, identity middleware.Identity
 
 // Review คือปุ่มอนุมัติ/ปฏิเสธหลังตรวจสลิป
 // อนุมัติแล้วห้องรายเดือนจะถูกตั้งเป็น "มีผู้เช่า" อัตโนมัติภายใน transaction เดียวกัน
-func (s *Service) Review(ctx context.Context, identity middleware.Identity, bookingID uuid.UUID, approve bool, reason string, ip string) (*Booking, error) {
+func (s *Service) Review(ctx context.Context, identity middleware.Identity, bookingID types.BookingID, approve bool, reason string, ip string) (*Booking, error) {
 	b, err := s.repo.GetByID(ctx, bookingID)
 	if err != nil {
 		return nil, access.MapErr(err)
@@ -419,7 +417,7 @@ func (s *Service) Review(ctx context.Context, identity middleware.Identity, book
 	if approve {
 		action, title, body = "booking.approve", "การจองได้รับการอนุมัติ", "รายการจอง "+b.Code+" ได้รับการอนุมัติเรียบร้อยแล้ว"
 	}
-	s.record(ctx, identity, action, b.ID.String(), map[string]any{"code": b.Code}, ip)
+	s.record(ctx, identity, b.BranchID, action, b.ID.String(), map[string]any{"code": b.Code}, ip)
 	s.notifier.Notify(ctx, b.UserID, title, body, "/bookings/"+b.ID.String())
 
 	return updated, nil
@@ -431,7 +429,7 @@ type AppointmentInput struct {
 }
 
 // SetAppointment กำหนดวันนัดหมายทำสัญญาสำหรับการจองรายเดือน
-func (s *Service) SetAppointment(ctx context.Context, identity middleware.Identity, bookingID uuid.UUID, in AppointmentInput, ip string) (*Booking, error) {
+func (s *Service) SetAppointment(ctx context.Context, identity middleware.Identity, bookingID types.BookingID, in AppointmentInput, ip string) (*Booking, error) {
 	b, err := s.repo.GetByID(ctx, bookingID)
 	if err != nil {
 		return nil, access.MapErr(err)
@@ -456,7 +454,7 @@ func (s *Service) SetAppointment(ctx context.Context, identity middleware.Identi
 		return nil, access.MapErr(err)
 	}
 
-	s.record(ctx, identity, "booking.set_appointment", b.ID.String(),
+	s.record(ctx, identity, b.BranchID, "booking.set_appointment", b.ID.String(),
 		map[string]any{"code": b.Code, "appointment_at": in.AppointmentAt}, ip)
 	s.notifier.Notify(ctx, b.UserID, "นัดหมายทำสัญญา",
 		"รายการจอง "+b.Code+" นัดทำสัญญาวันที่ "+in.AppointmentAt.Format("02-01-2006 15:04"),
@@ -466,7 +464,7 @@ func (s *Service) SetAppointment(ctx context.Context, identity middleware.Identi
 }
 
 // ListByMember ให้แอดมินดูประวัติการจองของสมาชิกรายคน
-func (s *Service) ListByMember(ctx context.Context, identity middleware.Identity, memberID uuid.UUID, limit, offset int) ([]Booking, int, error) {
+func (s *Service) ListByMember(ctx context.Context, identity middleware.Identity, memberID types.UserID, limit, offset int) ([]Booking, int, error) {
 	scoped, err := access.Branch(identity, nil)
 	if err != nil {
 		return nil, 0, err
@@ -482,7 +480,7 @@ func (s *Service) ListByMember(ctx context.Context, identity middleware.Identity
 }
 
 // Recent ใช้บนแดชบอร์ด (เรียกโดย module reporting)
-func (s *Service) Recent(ctx context.Context, branchID *uuid.UUID, limit int) ([]Booking, error) {
+func (s *Service) Recent(ctx context.Context, branchID *types.BranchID, limit int) ([]Booking, error) {
 	items, err := s.repo.RecentByBranch(ctx, branchID, limit)
 	return items, access.MapErr(err)
 }
@@ -501,11 +499,17 @@ func (s *Service) attachLatestPayments(ctx context.Context, bookings []Booking) 
 	}
 }
 
-func (s *Service) record(ctx context.Context, identity middleware.Identity, action, entityID string, detail map[string]any, ip string) {
+// record ผูก log กับสาขาของใบจองที่ถูกกระทำ ไม่ใช่สาขาของผู้กระทำ
+//
+// สำคัญเป็นพิเศษที่นี่ เพราะสมาชิกเป็นคนสร้างใบจองเอง และสมาชิกไม่มีสาขาผูกอยู่เลย
+// ถ้ายังใช้สาขาของผู้กระทำ log ของ booking.create ทุกใบจะมี branch_id เป็น null
+// แล้วหายไปจากหน้าประวัติการใช้งานทันทีที่ผู้ดูแลกรองตามสาขา
+func (s *Service) record(ctx context.Context, identity middleware.Identity, branchID types.BranchID,
+	action, entityID string, detail map[string]any, ip string) {
 	actorID := identity.UserID
 	s.audit.Record(ctx, audit.Entry{
 		ActorID: &actorID, ActorRole: identity.Role, ActorName: identity.Name,
-		BranchID: identity.BranchID, Action: action,
+		BranchID: &branchID, Action: action,
 		EntityType: "booking", EntityID: entityID, Detail: detail, IPAddress: ip,
 	})
 }

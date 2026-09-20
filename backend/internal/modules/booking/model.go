@@ -3,8 +3,6 @@ package booking
 import (
 	"time"
 
-	"github.com/google/uuid"
-
 	"backend/internal/shared/types"
 )
 
@@ -37,12 +35,12 @@ const (
 )
 
 type Booking struct {
-	ID       uuid.UUID      `json:"id"`
-	Code     string         `json:"code"` // รูปแบบ PT-001
-	UserID   uuid.UUID      `json:"user_id"`
-	BranchID uuid.UUID      `json:"branch_id"`
-	RoomID   uuid.UUID      `json:"room_id"`
-	StayType types.StayType `json:"stay_type"`
+	ID       types.BookingID `json:"id"`
+	Code     string          `json:"code"` // รูปแบบ PT-001
+	UserID   types.UserID    `json:"user_id"`
+	BranchID types.BranchID  `json:"branch_id"`
+	RoomID   types.RoomID    `json:"room_id"`
+	StayType types.StayType  `json:"stay_type"`
 
 	// ผู้เข้าพัก (กรอกในแบบฟอร์มจอง อาจต่างจากเจ้าของบัญชี)
 	GuestFirstName    string `json:"guest_first_name"`
@@ -65,11 +63,11 @@ type Booking struct {
 	TotalAmount float64       `json:"total_amount"`
 	Status      BookingStatus `json:"status"`
 	// เหตุผลที่ถูกปฏิเสธอยู่ที่ Payment.RejectReason ของการแจ้งชำระเงินครั้งนั้น ไม่ใช่ที่ใบจอง
-	ReviewedBy  *uuid.UUID `json:"reviewed_by,omitempty"`
-	ReviewedAt  *time.Time `json:"reviewed_at,omitempty"`
-	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ReviewedBy  *types.UserID `json:"reviewed_by,omitempty"`
+	ReviewedAt  *time.Time    `json:"reviewed_at,omitempty"`
+	CancelledAt *time.Time    `json:"cancelled_at,omitempty"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
 
 	// ฟิลด์จากการ join ไว้แสดงในตาราง โดยไม่ต้องยิง API ซ้ำ
 	BranchName    string   `json:"branch_name,omitempty"`
@@ -81,15 +79,15 @@ type Booking struct {
 
 // Payment คือการแจ้งชำระเงินหนึ่งครั้ง พร้อมสลิปที่แนบมา
 type Payment struct {
-	ID            uuid.UUID     `json:"id"`
-	BookingID     uuid.UUID     `json:"booking_id"`
-	Amount        float64       `json:"amount"`
-	TransferredAt time.Time     `json:"transferred_at"`
-	SlipURL       string        `json:"slip_url"`
-	Note          string        `json:"note"`
-	Status        PaymentStatus `json:"status"`
-	ReviewedBy    *uuid.UUID    `json:"reviewed_by,omitempty"`
-	ReviewedAt    *time.Time    `json:"reviewed_at,omitempty"`
-	RejectReason  string        `json:"reject_reason"`
-	CreatedAt     time.Time     `json:"created_at"`
+	ID            types.PaymentID `json:"id"`
+	BookingID     types.BookingID `json:"booking_id"`
+	Amount        float64         `json:"amount"`
+	TransferredAt time.Time       `json:"transferred_at"`
+	SlipURL       string          `json:"slip_url"`
+	Note          string          `json:"note"`
+	Status        PaymentStatus   `json:"status"`
+	ReviewedBy    *types.UserID   `json:"reviewed_by,omitempty"`
+	ReviewedAt    *time.Time      `json:"reviewed_at,omitempty"`
+	RejectReason  string          `json:"reject_reason"`
+	CreatedAt     time.Time       `json:"created_at"`
 }

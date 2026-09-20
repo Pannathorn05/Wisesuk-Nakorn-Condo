@@ -28,14 +28,17 @@ func (h *Handler) Dashboard(c *gin.Context) {
 func (h *Handler) ListActivityLogs(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	f := ActivityFilter{Action: httpx.QueryString(c, "action")}
+	f := ActivityFilter{
+		Action: httpx.QueryString(c, "action"),
+		Search: httpx.QueryString(c, "search"),
+	}
 
 	var err error
-	if f.ActorID, err = httpx.QueryUUID(c, "actor_id"); err != nil {
+	if f.ActorID, err = httpx.QueryID[types.User](c, "actor_id"); err != nil {
 		httpx.Error(c, err)
 		return
 	}
-	if f.BranchID, err = httpx.QueryUUID(c, "branch_id"); err != nil {
+	if f.BranchID, err = httpx.QueryID[types.Branch](c, "branch_id"); err != nil {
 		httpx.Error(c, err)
 		return
 	}

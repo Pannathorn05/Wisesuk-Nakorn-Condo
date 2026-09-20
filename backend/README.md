@@ -116,7 +116,8 @@ backend/
 │   │
 │   ├── database/             connection pool, migrate, transaction manager
 │   │   └── migrations/       schema (.sql ฝังไว้ใน binary)
-│   ├── auth/                 JWT + bcrypt + refresh token
+│   ├── auth/                 JWT + bcrypt + refresh token + reset token
+│   ├── mailer/               ส่งอีเมลผ่าน SMTP (ใช้เฉพาะอีเมลรีเซ็ตรหัสผ่าน)
 │   ├── middleware/           ตรวจ token, จำกัดสิทธิ์, logging, recover
 │   ├── config/               อ่าน env + ตรวจค่าที่จำเป็น
 │   ├── httpx/                รูปแบบ response/error + ตัวช่วยอ่าน query
@@ -211,6 +212,8 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 | POST | `/auth/login` | เข้าสู่ระบบ (ใช้ร่วมกันทุกสิทธิ์) |
 | POST | `/auth/refresh` | ขอ access token ใบใหม่ |
 | POST | `/auth/logout` | ออกจากระบบ |
+| POST | `/auth/forgot-password` | ขอลิงก์รีเซ็ตรหัสผ่านทางอีเมล — ตอบ 204 เสมอ |
+| POST | `/auth/reset-password` | ตั้งรหัสผ่านใหม่ด้วย token จากอีเมล (เตะทุก session ออก) |
 | GET | `/branches` | สาขาในเครือทั้งหมด |
 | GET | `/branches/{id}` | รายละเอียดสาขา + รูป + สิ่งอำนวยความสะดวก + สถานที่ใกล้เคียง |
 | GET | `/amenities` | รายการสิ่งอำนวยความสะดวกทั้งหมด |
@@ -248,10 +251,11 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 ### ผู้ดูแลระบบ (Admin) และหัวหน้าผู้ดูแลระบบ
 
 ทุก endpoint ใต้ `/admin` — **Admin เห็นและแก้ได้เฉพาะสาขาที่ตนรับผิดชอบ**, Super Admin เห็นทุกสาขา
+· Super Admin ใส่ `branch_id` เพื่อเจาะดูสาขาเดียว ไม่ใส่ = ทุกสาขา
 
 | Method | Path | คำอธิบาย |
 |---|---|---|
-| GET | `/admin/dashboard` | ห้องว่างรายวัน/รายเดือน, รายการรอตรวจสอบ, กิจกรรมล่าสุด |
+| GET | `/admin/dashboard` | ห้องว่างรายวัน/รายเดือน, รายการรอตรวจสอบ (รายสาขา) + กิจกรรมล่าสุด 10 รายการ |
 | GET | `/admin/bookings` | จัดการการจอง (กรอง `status`, `stay_type`, `search`) |
 | POST | `/admin/bookings/{id}/approve` | อนุมัติการจอง |
 | POST | `/admin/bookings/{id}/reject` | ปฏิเสธ (ต้องระบุ `reason`) |
@@ -271,7 +275,7 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 | POST | `/admin/rooms/{id}/image` | อัปโหลดรูปห้อง (multipart: `image`) |
 | GET | `/admin/members` | รายชื่อสมาชิก (ค้นด้วย `search`) |
 | GET | `/admin/members/{id}/bookings` | ประวัติการจองของสมาชิกรายคน |
-| GET | `/admin/activity-logs` | ประวัติการใช้งาน |
+| GET | `/admin/activity-logs` | ประวัติการใช้งาน (กรอง `search`, `actor_role`, `actor_id`, `action`, `branch_id`) |
 
 **เรื่องรูปภาพ:** รูปสาขาและรูปห้อง**เก็บเป็นเนื้อไฟล์ในฐานข้อมูล** (ตาราง `assets`) สำรองข้อมูล
 ด้วย dump ชุดเดียวจึงได้ทั้งข้อมูลและรูป ไม่ต้องดูแล volume แยกต่างหาก อัปโหลดผ่าน endpoint
@@ -292,11 +296,20 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 
 | Method | Path | คำอธิบาย |
 |---|---|---|
-| GET | `/superadmin/staff` | รายชื่อผู้ดูแลระบบทั้งหมด |
-| POST | `/superadmin/staff` | เพิ่มผู้ดูแลระบบ + กำหนดสาขาที่รับผิดชอบ |
-| PUT | `/superadmin/staff/{id}` | แก้ไข / ระงับบัญชี / เปลี่ยนรหัสผ่าน |
+| GET | `/superadmin/staff` | รายชื่อผู้ดูแลระบบทั้งหมด พร้อมสาขาที่แต่ละคนดูแล |
+| POST | `/superadmin/staff` | เพิ่มผู้ดูแลระบบ + กำหนดสาขาที่รับผิดชอบ (`branch_id`) |
+| PUT | `/superadmin/staff/{id}` | แก้ไข / ย้ายสาขา / ระงับบัญชี / ตั้งรหัสผ่านใหม่ |
 | DELETE | `/superadmin/staff/{id}` | ลบผู้ดูแลระบบ |
 | GET | `/superadmin/branches` | สาขาทั้งหมดรวมที่ปิดใช้งาน |
+
+**กฎความเป็นเจ้าของ** — **1 สาขามีผู้ดูแลได้คนเดียว** และ **ทั้งระบบมีหัวหน้าผู้ดูแลได้คนเดียว**
+บังคับด้วย partial unique index ที่ฐานข้อมูล (`uq_admin_per_branch`, `uq_single_superadmin`
+ใน migration `0005`) ไม่ได้พึ่งการเช็คในโค้ดอย่างเดียว
+สร้างหรือย้ายผู้ดูแลไปสาขาที่มีคนดูแลอยู่แล้วจะได้ **422** พร้อมข้อความที่ช่อง `branch_id`
+
+**รหัสผ่านของบัญชีที่สร้างใหม่** — `POST /superadmin/staff` ไม่รับรหัสผ่าน ระบบตั้งให้จาก
+`STAFF_DEFAULT_PASSWORD` ใน `.env` แล้วตั้งธง `must_change_password` ผู้ดูแลคนนั้นจึงต้อง
+เปลี่ยนรหัสผ่านผ่าน `POST /me/password` ก่อน ธงนี้ติดมากับ `GET /me` ให้ frontend บังคับได้
 
 ---
 
@@ -323,8 +336,12 @@ approved  หรือ  rejected
 
 - รหัสผ่านเก็บเป็น **bcrypt** (cost 12) ไม่มีการเก็บรหัสผ่านจริงที่ใดเลย
 - **Refresh token rotation** — เก็บเฉพาะ SHA-256 hash ลง DB, ใช้ครั้งเดียวแล้วถูกเพิกถอนทันที
-- เปลี่ยนรหัสผ่านแล้ว **session อื่นทั้งหมดถูกเตะออก**
+- เปลี่ยนรหัสผ่านหรือรีเซ็ตรหัสผ่านแล้ว **session อื่นทั้งหมดถูกเตะออก**
 - ข้อความ login ผิดเหมือนกันทุกกรณี + เผาเวลาเท่ากันเมื่อไม่พบอีเมล (กัน user enumeration)
+- **Token รีเซ็ตรหัสผ่าน** — เก็บเฉพาะ SHA-256 hash ลง DB เหมือน refresh token, อายุ 15 นาที,
+  ใช้ได้ครั้งเดียว, ขอใบใหม่แล้วใบเก่าถูกเพิกถอนทันที, จำกัด 5 ครั้ง/ชม./อีเมล (นับที่ DB)
+- `/auth/forgot-password` ตอบ **204 เหมือนกันทุกกรณี** ไม่ว่าอีเมลจะมีบัญชีหรือไม่
+  และส่งอีเมลแบบไม่บล็อก response เพื่อไม่ให้จับเวลาเดาได้ว่าอีเมลใดมีบัญชี
 - **จำกัดสิทธิ์รายสาขาที่ระดับ query** — คำสั่ง UPDATE/DELETE ของแอดมินมี `AND branch_id = ...` เสมอ
   ไม่ได้พึ่งการเช็คใน handler อย่างเดียว
 - สมาชิกที่เรียกดูการจองของคนอื่นได้ **404** (ไม่ใช่ 403) เพื่อไม่ให้รู้ว่ารหัสจองนั้นมีจริง

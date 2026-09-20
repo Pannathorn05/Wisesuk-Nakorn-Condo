@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"backend/internal/shared/types"
 	"backend/internal/testsupport"
 )
 
@@ -257,7 +258,7 @@ func TestServeUnknownAssetReturns404(t *testing.T) {
 	t.Parallel()
 
 	app := testsupport.NewApp(t)
-	rec := get(t, app, "/files/6f9619ff-8b86-d011-b42d-00c04fc964ff", nil)
+	rec := get(t, app, "/files/ast-999999", nil)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("ดึงรูปที่ไม่มีอยู่ได้ status %d ต้องการ 404", rec.Code)
 	}
@@ -271,7 +272,7 @@ func TestUploadRoomImageAcrossBranchIsForbidden(t *testing.T) {
 	adminA := testsupport.AccessToken(t, app.Pool, app.Fixture.AdminAID)
 	adminB := testsupport.AccessToken(t, app.Pool, app.Fixture.AdminBID)
 
-	var roomID string
+	var roomID types.RoomID
 	const insertRoom = `
 		INSERT INTO rooms (branch_id, room_number, floor, stay_type, price)
 		VALUES ($1, '101', 1, 'monthly', 3000) RETURNING id`
@@ -280,7 +281,7 @@ func TestUploadRoomImageAcrossBranchIsForbidden(t *testing.T) {
 	}
 
 	content := pngBytes(t, color.RGBA{G: 180, A: 255})
-	path := "/api/v1/admin/rooms/" + roomID + "/image"
+	path := "/api/v1/admin/rooms/" + roomID.String() + "/image"
 
 	if rec := upload(t, app, path, adminB, content, "room.png", nil); rec.Code != http.StatusForbidden {
 		t.Errorf("แอดมินสาขาอื่นอัปโหลดได้ status %d ต้องการ 403", rec.Code)

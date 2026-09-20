@@ -14,7 +14,7 @@ export function OtherBranchesSection({ branches }) {
       <h3>สาขาอื่นๆ ของเรา</h3>
       <div className="other-branches-section__grid">
         {branches.map((branch) => (
-          <Link to={`/branches/${branch.id}`} className="other-branches-section__card" key={branch.id}>
+          <Link to={`/branches/${branch.slug}`} className="other-branches-section__card" key={branch.id}>
             <div className="other-branches-section__image">
               <ImageWithFallback src={getBranchCover(branch)} alt={branch.name} />
             </div>

@@ -22,14 +22,27 @@ const (
 
 // Identity คือผู้เรียก API ที่ผ่านการยืนยันตัวตนแล้ว
 type Identity struct {
-	UserID   uuid.UUID
-	Role     types.Role
-	Name     string
-	BranchID *uuid.UUID // มีค่าเฉพาะ role = admin
+	UserID types.UserID
+	Role   types.Role
+	Name   string
+	// BranchID คือสาขาที่รับผิดชอบ มีค่าเฉพาะ role = admin ซึ่งผูกกับสาขาเดียวเสมอ
+	// (super admin เห็นทุกสาขาอยู่แล้วจึงไม่ผูกกับสาขาใด ดู shared/access)
+	BranchID *types.BranchID
 }
 
 // IsSuperAdmin ใช้ตัดสินใจว่าจะข้ามการจำกัดสาขาได้หรือไม่
 func (i Identity) IsSuperAdmin() bool { return i.Role == types.RoleSuperAdmin }
+
+// HasBranch บอกว่าผู้เรียกมีสิทธิ์แตะข้อมูลของสาขานี้หรือไม่
+//
+// super admin ตอบจริงเสมอ ส่วน admin ต้องเป็นสาขาของตัวเองเท่านั้น
+// สมาชิกไม่มีสาขาจึงตอบเท็จเสมอ
+func (i Identity) HasBranch(id types.BranchID) bool {
+	if i.IsSuperAdmin() {
+		return true
+	}
+	return i.BranchID != nil && *i.BranchID == id
+}
 
 // IdentityFrom ดึงผู้ใช้จาก context ต้องเรียกหลัง Authenticate เท่านั้น
 func IdentityFrom(c *gin.Context) (Identity, bool) {
@@ -72,7 +85,7 @@ func Authenticate(mgr *auth.Manager) gin.HandlerFunc {
 			return
 		}
 
-		userID, err := uuid.Parse(claims.Subject)
+		userID, err := types.ParseID[types.User](claims.Subject)
 		if err != nil {
 			httpx.Error(c, httpx.ErrUnauthorized)
 			return
@@ -80,7 +93,7 @@ func Authenticate(mgr *auth.Manager) gin.HandlerFunc {
 
 		identity := Identity{UserID: userID, Role: claims.Role, Name: claims.Name}
 		if claims.BranchID != "" {
-			branchID, err := uuid.Parse(claims.BranchID)
+			branchID, err := types.ParseID[types.Branch](claims.BranchID)
 			if err != nil {
 				httpx.Error(c, httpx.ErrUnauthorized)
 				return

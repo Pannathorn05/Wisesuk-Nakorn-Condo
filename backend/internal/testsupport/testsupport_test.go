@@ -7,8 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/google/uuid"
-
+	"backend/internal/shared/types"
 	"backend/internal/testsupport"
 )
 
@@ -81,7 +80,7 @@ func isolate(t *testing.T) {
 
 	// ออก token ได้ครบทุกบทบาทจากข้อมูลตั้งต้น และ token ของคนละบทบาทต้องไม่เหมือนกัน
 	seen := map[string]bool{}
-	for label, userID := range map[string]uuid.UUID{
+	for label, userID := range map[string]types.UserID{
 		"super admin":  fixture.SuperAdminID,
 		"admin สาขา A": fixture.AdminAID,
 		"admin สาขา B": fixture.AdminBID,

@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
 	"backend/internal/shared/audit"
 	"backend/internal/shared/types"
@@ -20,12 +18,14 @@ type Repository struct{ db *database.TxManager }
 func NewRepository(db *database.TxManager) *Repository { return &Repository{db: db} }
 
 type ListParams struct {
-	ActorID   *uuid.UUID
+	ActorID   *types.UserID
 	ActorRole *types.Role
-	BranchID  *uuid.UUID
-	Action    string
-	Limit     int
-	Offset    int
+	// BranchID จำกัดผลให้เหลือสาขาเดียว — nil = ทุกสาขา
+	BranchID *types.BranchID
+	Action   string
+	Search   string
+	Limit    int
+	Offset   int
 }
 
 func (r *Repository) ListLogs(ctx context.Context, p ListParams) ([]audit.Log, int, error) {
@@ -43,6 +43,14 @@ func (r *Repository) ListLogs(ctx context.Context, p ListParams) ([]audit.Log, i
 	}
 	if a := strings.TrimSpace(p.Action); a != "" {
 		where = append(where, "al.action = "+b.Bind(a))
+	}
+	// ช่องค้นหาในหน้าประวัติการใช้งาน — ชื่อผู้กระทำ ชื่อสาขา หรือรหัสของสิ่งที่ถูกกระทำ
+	// ผูกค่าเดียวใช้สามที่ เพื่อไม่ให้ Binder นับ placeholder เพิ่มโดยไม่จำเป็น
+	if q := strings.TrimSpace(p.Search); q != "" {
+		like := b.Bind("%" + q + "%")
+		where = append(where, "(al.actor_name ILIKE "+like+
+			" OR COALESCE(b.name, '') ILIKE "+like+
+			" OR al.entity_id ILIKE "+like+")")
 	}
 
 	whereSQL := "WHERE " + strings.Join(where, " AND ")

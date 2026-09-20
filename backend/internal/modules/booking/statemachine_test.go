@@ -31,6 +31,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"backend/internal/shared/types"
 	"backend/internal/testsupport"
 	"backend/internal/timex"
 )
@@ -96,10 +97,10 @@ func assertStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
 }
 
 // insertRoom ใส่ห้องตรงลงฐานข้อมูล เพราะการสร้างห้องผ่าน API เป็นขอบเขตของ AC-19
-func insertRoom(t *testing.T, c client, branchID uuid.UUID, stayType string, price float64) uuid.UUID {
+func insertRoom(t *testing.T, c client, branchID types.BranchID, stayType string, price float64) types.RoomID {
 	t.Helper()
 
-	var id uuid.UUID
+	var id types.RoomID
 	const q = `
 		INSERT INTO rooms (branch_id, room_number, stay_type, price)
 		VALUES ($1, $2, $3, $4)
@@ -116,18 +117,18 @@ func day(offset int) string {
 }
 
 // createBooking สร้างการจองผ่าน API จริงแล้วคืน id กับ code
-func createBooking(t *testing.T, c client, token string, roomID uuid.UUID, stayType string, from int) (string, string) {
+func createBooking(t *testing.T, c client, token string, roomID types.RoomID, stayType string, from int) (string, string) {
 	t.Helper()
 
 	var body string
 	if stayType == "monthly" {
 		body = fmt.Sprintf(`{"room_id":%q,"stay_type":"monthly","guest_first_name":"ทดสอบ",`+
 			`"guest_last_name":"ระบบ","guest_phone":"0800000001","move_in_date":%q}`,
-			roomID, day(from))
+			roomID.String(), day(from))
 	} else {
 		body = fmt.Sprintf(`{"room_id":%q,"stay_type":"daily","guest_first_name":"ทดสอบ",`+
 			`"guest_last_name":"ระบบ","guest_phone":"0800000001","check_in_date":%q,"check_out_date":%q}`,
-			roomID, day(from), day(from+3))
+			roomID.String(), day(from), day(from+3))
 	}
 
 	rec := c.do(t, http.MethodPost, "/api/v1/bookings", token, body)
@@ -172,24 +173,35 @@ func submitPayment(t *testing.T, c client, token, bookingID string) {
 }
 
 // awaitingReview เตรียมใบจองที่พร้อมให้แอดมินตรวจ
-func awaitingReview(t *testing.T, c client, token string, roomID uuid.UUID, stayType string, from int) (string, string) {
+func awaitingReview(t *testing.T, c client, token string, roomID types.RoomID, stayType string, from int) (string, string) {
 	t.Helper()
 	id, code := createBooking(t, c, token, roomID, stayType, from)
 	submitPayment(t, c, token, id)
 	return id, code
 }
 
+// bookingKey แปลง id ที่ API คืนมา ("bkg-001") กลับเป็นเลขที่ใช้ค้นในฐานข้อมูล
+// เทสที่ยิง SQL ตรงต้องใช้ตัวนี้เสมอ เพราะคอลัมน์ id เป็น BIGINT ไม่ใช่ข้อความ
+func bookingKey(t *testing.T, id string) types.BookingID {
+	t.Helper()
+	parsed, err := types.ParseID[types.Booking](id)
+	if err != nil {
+		t.Fatalf("รหัสการจอง %q ไม่ถูกรูปแบบ: %v", id, err)
+	}
+	return parsed
+}
+
 func statusOf(t *testing.T, c client, bookingID string) string {
 	t.Helper()
 	var s string
 	if err := c.app.Pool.QueryRow(context.Background(),
-		`SELECT status::text FROM bookings WHERE id = $1`, bookingID).Scan(&s); err != nil {
+		`SELECT status::text FROM bookings WHERE id = $1`, bookingKey(t, bookingID)).Scan(&s); err != nil {
 		t.Fatalf("อ่านสถานะการจองไม่ได้: %v", err)
 	}
 	return s
 }
 
-func roomStatusOf(t *testing.T, c client, roomID uuid.UUID) string {
+func roomStatusOf(t *testing.T, c client, roomID types.RoomID) string {
 	t.Helper()
 	var s string
 	if err := c.app.Pool.QueryRow(context.Background(),
@@ -238,7 +250,7 @@ func TestBookingStateMachine(t *testing.T) {
 			var s string
 			if err := c.app.Pool.QueryRow(context.Background(),
 				`SELECT status::text FROM payments WHERE booking_id = $1 ORDER BY created_at DESC LIMIT 1`,
-				id).Scan(&s); err != nil {
+				bookingKey(t, id)).Scan(&s); err != nil {
 				t.Fatalf("อ่านสถานะการชำระเงินไม่ได้: %v", err)
 			}
 			if s != "approved" {
@@ -304,7 +316,7 @@ func TestBookingStateMachine(t *testing.T) {
 			var onPayment string
 			if err := c.app.Pool.QueryRow(context.Background(),
 				`SELECT reject_reason FROM payments WHERE booking_id = $1 ORDER BY created_at DESC LIMIT 1`,
-				id).Scan(&onPayment); err != nil {
+				bookingKey(t, id)).Scan(&onPayment); err != nil {
 				t.Fatalf("อ่านเหตุผลจาก payments ไม่ได้: %v", err)
 			}
 			if onPayment != reason {

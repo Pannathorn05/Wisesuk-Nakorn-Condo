@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
 	"backend/internal/shared/types"
 )
@@ -17,8 +15,8 @@ func NewRepository(db *database.TxManager) *Repository { return &Repository{db: 
 
 const userColumns = `
 	u.id, u.email, u.password_hash, u.first_name, u.last_name, u.phone,
-	u.role, u.branch_id, u.avatar_url, u.is_active, u.last_login_at,
-	u.created_at, u.updated_at, COALESCE(b.name, '')`
+	u.role, u.branch_id, u.avatar_url, u.is_active, u.must_change_password,
+	u.last_login_at, u.created_at, u.updated_at, COALESCE(b.name, '')`
 
 const userJoins = ` FROM users u LEFT JOIN branches b ON b.id = u.branch_id `
 
@@ -26,8 +24,8 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	err := row.Scan(
 		&u.ID, &u.Email, &u.PasswordHash, &u.FirstName, &u.LastName, &u.Phone,
-		&u.Role, &u.BranchID, &u.AvatarURL, &u.IsActive, &u.LastLoginAt,
-		&u.CreatedAt, &u.UpdatedAt, &u.BranchName,
+		&u.Role, &u.BranchID, &u.AvatarURL, &u.IsActive, &u.MustChangePassword,
+		&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.BranchName,
 	)
 	if err != nil {
 		return nil, database.NormalizeErr(err)
@@ -36,24 +34,25 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 }
 
 type CreateUserParams struct {
-	Email        string
-	PasswordHash string
-	FirstName    string
-	LastName     string
-	Phone        string
-	Role         types.Role
-	BranchID     *uuid.UUID
+	Email              string
+	PasswordHash       string
+	FirstName          string
+	LastName           string
+	Phone              string
+	Role               types.Role
+	BranchID           *types.BranchID
+	MustChangePassword bool
 }
 
 func (r *Repository) Create(ctx context.Context, p CreateUserParams) (*User, error) {
 	const q = `
-		INSERT INTO users (email, password_hash, first_name, last_name, phone, role, branch_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO users (email, password_hash, first_name, last_name, phone, role, branch_id, must_change_password)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`
-	var id uuid.UUID
+	var id types.UserID
 	err := r.db.Executor(ctx).QueryRow(ctx, q,
 		normalizeEmail(p.Email), p.PasswordHash,
-		p.FirstName, p.LastName, p.Phone, p.Role, p.BranchID,
+		p.FirstName, p.LastName, p.Phone, p.Role, p.BranchID, p.MustChangePassword,
 	).Scan(&id)
 	if err != nil {
 		return nil, err
@@ -61,7 +60,7 @@ func (r *Repository) Create(ctx context.Context, p CreateUserParams) (*User, err
 	return r.GetByID(ctx, id)
 }
 
-func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
+func (r *Repository) GetByID(ctx context.Context, id types.UserID) (*User, error) {
 	q := `SELECT ` + userColumns + userJoins + ` WHERE u.id = $1`
 	return scanUser(r.db.Executor(ctx).QueryRow(ctx, q, id))
 }
@@ -85,7 +84,7 @@ type UpdateProfileParams struct {
 	AvatarURL *string
 }
 
-func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p UpdateProfileParams) (*User, error) {
+func (r *Repository) UpdateProfile(ctx context.Context, id types.UserID, p UpdateProfileParams) (*User, error) {
 	const q = `
 		UPDATE users SET
 			first_name = $2, last_name = $3, phone = $4,
@@ -102,9 +101,14 @@ func (r *Repository) UpdateProfile(ctx context.Context, id uuid.UUID, p UpdatePr
 	return r.GetByID(ctx, id)
 }
 
-func (r *Repository) UpdatePassword(ctx context.Context, id uuid.UUID, hash string) error {
+// UpdatePassword ตั้งรหัสผ่านใหม่
+//
+// mustChange บอกว่ารหัสที่ตั้งนี้เป็นรหัสตั้งต้นที่คนอื่นตั้งให้หรือไม่ —
+// ผู้ใช้เปลี่ยนรหัสของตัวเองส่ง false (ปลดธง) ส่วนหัวหน้าผู้ดูแลตั้งรหัสให้คนอื่นส่ง true
+func (r *Repository) UpdatePassword(ctx context.Context, id types.UserID, hash string, mustChange bool) error {
 	tag, err := r.db.Executor(ctx).Exec(ctx,
-		`UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1`, id, hash)
+		`UPDATE users SET password_hash = $2, must_change_password = $3, updated_at = now() WHERE id = $1`,
+		id, hash, mustChange)
 	if err != nil {
 		return err
 	}
@@ -114,7 +118,7 @@ func (r *Repository) UpdatePassword(ctx context.Context, id uuid.UUID, hash stri
 	return nil
 }
 
-func (r *Repository) TouchLastLogin(ctx context.Context, id uuid.UUID) error {
+func (r *Repository) TouchLastLogin(ctx context.Context, id types.UserID) error {
 	_, err := r.db.Executor(ctx).Exec(ctx, `UPDATE users SET last_login_at = now() WHERE id = $1`, id)
 	return err
 }
@@ -166,15 +170,16 @@ type UpdateStaffParams struct {
 	FirstName string
 	LastName  string
 	Phone     string
-	BranchID  *uuid.UUID
+	BranchID  *types.BranchID
 	IsActive  bool
 }
 
-func (r *Repository) UpdateStaff(ctx context.Context, id uuid.UUID, p UpdateStaffParams) (*User, error) {
+func (r *Repository) UpdateStaff(ctx context.Context, id types.UserID, p UpdateStaffParams) (*User, error) {
+	// หัวหน้าผู้ดูแลต้องไม่ผูกกับสาขา จึงบังคับเป็น NULL ตรงนี้แทนที่จะไว้ใจค่าที่ส่งมา
 	const q = `
 		UPDATE users SET
 			first_name = $2, last_name = $3, phone = $4,
-			branch_id  = CASE WHEN role = 'admin' THEN $5::uuid ELSE NULL END,
+			branch_id  = CASE WHEN role = 'admin' THEN $5::bigint ELSE NULL END,
 			is_active  = $6,
 			updated_at = now()
 		WHERE id = $1 AND role IN ('admin', 'superadmin')`
@@ -188,7 +193,7 @@ func (r *Repository) UpdateStaff(ctx context.Context, id uuid.UUID, p UpdateStaf
 	return r.GetByID(ctx, id)
 }
 
-func (r *Repository) DeleteAdmin(ctx context.Context, id uuid.UUID) error {
+func (r *Repository) DeleteAdmin(ctx context.Context, id types.UserID) error {
 	tag, err := r.db.Executor(ctx).Exec(ctx, `DELETE FROM users WHERE id = $1 AND role = 'admin'`, id)
 	if err != nil {
 		return err
@@ -201,7 +206,7 @@ func (r *Repository) DeleteAdmin(ctx context.Context, id uuid.UUID) error {
 
 // ---------------------------------------------------------------- refresh tokens
 
-func (r *Repository) StoreRefreshToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error {
+func (r *Repository) StoreRefreshToken(ctx context.Context, userID types.UserID, tokenHash string, expiresAt time.Time) error {
 	_, err := r.db.Executor(ctx).Exec(ctx,
 		`INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
 		userID, tokenHash, expiresAt)
@@ -210,14 +215,14 @@ func (r *Repository) StoreRefreshToken(ctx context.Context, userID uuid.UUID, to
 
 // ConsumeRefreshToken ทำ rotation: ตรวจว่า token ยังใช้ได้แล้วเพิกถอนทันทีในคำสั่งเดียว
 // การรวมเป็นคำสั่งเดียวทำให้ token เดิมถูกใช้ซ้ำไม่ได้แม้มีคำขอเข้ามาพร้อมกัน
-func (r *Repository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (uuid.UUID, error) {
+func (r *Repository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (types.UserID, error) {
 	const q = `
 		UPDATE refresh_tokens SET revoked_at = now()
 		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
 		RETURNING user_id`
-	var userID uuid.UUID
+	var userID types.UserID
 	if err := r.db.Executor(ctx).QueryRow(ctx, q, tokenHash).Scan(&userID); err != nil {
-		return uuid.Nil, database.NormalizeErr(err)
+		return 0, database.NormalizeErr(err)
 	}
 	return userID, nil
 }
@@ -229,7 +234,7 @@ func (r *Repository) RevokeRefreshToken(ctx context.Context, tokenHash string) e
 	return err
 }
 
-func (r *Repository) RevokeAllRefreshTokens(ctx context.Context, userID uuid.UUID) error {
+func (r *Repository) RevokeAllRefreshTokens(ctx context.Context, userID types.UserID) error {
 	_, err := r.db.Executor(ctx).Exec(ctx,
 		`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
 		userID)
@@ -238,14 +243,14 @@ func (r *Repository) RevokeAllRefreshTokens(ctx context.Context, userID uuid.UUI
 
 // ---------------------------------------------------------------- notifications
 
-func (r *Repository) CreateNotification(ctx context.Context, userID uuid.UUID, title, body, link string) error {
+func (r *Repository) CreateNotification(ctx context.Context, userID types.UserID, title, body, link string) error {
 	_, err := r.db.Executor(ctx).Exec(ctx,
 		`INSERT INTO notifications (user_id, title, body, link) VALUES ($1, $2, $3, $4)`,
 		userID, title, body, link)
 	return err
 }
 
-func (r *Repository) ListNotifications(ctx context.Context, userID uuid.UUID, limit int) ([]Notification, int, error) {
+func (r *Repository) ListNotifications(ctx context.Context, userID types.UserID, limit int) ([]Notification, int, error) {
 	exec := r.db.Executor(ctx)
 
 	var unread int
@@ -279,12 +284,81 @@ func (r *Repository) ListNotifications(ctx context.Context, userID uuid.UUID, li
 }
 
 // MarkNotificationsRead อ่านทีละรายการ หรือทั้งหมดเมื่อ id = nil
-func (r *Repository) MarkNotificationsRead(ctx context.Context, userID uuid.UUID, id *uuid.UUID) error {
+func (r *Repository) MarkNotificationsRead(ctx context.Context, userID types.UserID, id *types.NotificationID) error {
 	_, err := r.db.Executor(ctx).Exec(ctx,
 		`UPDATE notifications SET read_at = now()
-		 WHERE user_id = $1 AND read_at IS NULL AND ($2::uuid IS NULL OR id = $2)`,
+		 WHERE user_id = $1 AND read_at IS NULL AND ($2::bigint IS NULL OR id = $2)`,
 		userID, id)
 	return err
+}
+
+// ---------------------------------------------------------------- oauth identity
+
+// GetByIdentity หาผู้ใช้จากบัญชีภายนอกที่ผูกไว้
+//
+// จับคู่ด้วย provider_user_id ไม่ใช่อีเมล เพราะผู้ใช้เปลี่ยนอีเมลที่ Google/Facebook ได้
+// แต่รหัสผู้ใช้ฝั่ง provider ไม่เปลี่ยน
+func (r *Repository) GetByIdentity(ctx context.Context, provider, providerUserID string) (*User, error) {
+	q := `SELECT ` + userColumns + userJoins +
+		` JOIN user_identities i ON i.user_id = u.id
+		  WHERE i.provider = $1 AND i.provider_user_id = $2`
+	return scanUser(r.db.Executor(ctx).QueryRow(ctx, q, provider, providerUserID))
+}
+
+// LinkIdentity ผูกบัญชีภายนอกเข้ากับผู้ใช้ที่มีอยู่
+//
+// ON CONFLICT DO NOTHING รองรับกรณีสองคำขอของคนเดียวกันวิ่งเข้ามาพร้อมกัน
+// (ผู้ใช้กดปุ่มซ้ำ) ให้ผลลัพธ์เหมือนกันทั้งสองครั้งแทนที่จะพังไปหนึ่งครั้ง
+func (r *Repository) LinkIdentity(ctx context.Context, userID types.UserID, provider, providerUserID, email string) error {
+	const q = `
+		INSERT INTO user_identities (user_id, provider, provider_user_id, email)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (provider, provider_user_id) DO NOTHING`
+	_, err := r.db.Executor(ctx).Exec(ctx, q, userID, provider, providerUserID, normalizeEmail(email))
+	return err
+}
+
+// ListIdentities บอกว่าผู้ใช้คนนี้ผูกบัญชีภายนอกเจ้าใดไว้บ้าง
+func (r *Repository) ListIdentities(ctx context.Context, userID types.UserID) ([]string, error) {
+	rows, err := r.db.Executor(ctx).Query(ctx,
+		`SELECT provider FROM user_identities WHERE user_id = $1 ORDER BY provider`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	providers := []string{}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		providers = append(providers, p)
+	}
+	return providers, rows.Err()
+}
+
+// ---------------------------------------------------------------- oauth exchange code
+
+func (r *Repository) StoreOAuthCode(ctx context.Context, userID types.UserID, codeHash string, expiresAt time.Time) error {
+	_, err := r.db.Executor(ctx).Exec(ctx,
+		`INSERT INTO oauth_exchange_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)`,
+		userID, codeHash, expiresAt)
+	return err
+}
+
+// ConsumeOAuthCode ตรวจและปิดโค้ดในคำสั่งเดียวด้วยเหตุผลเดียวกับ ConsumeRefreshToken
+// คือทำให้โค้ดใบเดิมถูกใช้ซ้ำไม่ได้แม้มีคำขอเข้ามาพร้อมกัน
+func (r *Repository) ConsumeOAuthCode(ctx context.Context, codeHash string) (types.UserID, error) {
+	const q = `
+		UPDATE oauth_exchange_codes SET consumed_at = now()
+		WHERE code_hash = $1 AND consumed_at IS NULL AND expires_at > now()
+		RETURNING user_id`
+	var userID types.UserID
+	if err := r.db.Executor(ctx).QueryRow(ctx, q, codeHash).Scan(&userID); err != nil {
+		return 0, database.NormalizeErr(err)
+	}
+	return userID, nil
 }
 
 // ---------------------------------------------------------------- helpers

@@ -1,8 +1,6 @@
 -- ระบบจองห้องพัก หอพักวิเศษสุขนครคอนโด และหอพักในเครือ
 -- Schema เริ่มต้น: ผู้ใช้, สาขา, ห้องพัก, การจอง, การชำระเงิน, activity log
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TYPE user_role       AS ENUM ('member', 'admin', 'superadmin');
 CREATE TYPE stay_type       AS ENUM ('daily', 'monthly');
 CREATE TYPE room_status     AS ENUM ('available', 'occupied', 'maintenance');
@@ -11,7 +9,7 @@ CREATE TYPE payment_status  AS ENUM ('submitted', 'approved', 'rejected');
 
 -- ---------------------------------------------------------------- สาขา
 CREATE TABLE branches (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id                  BIGSERIAL PRIMARY KEY,
     slug                TEXT        NOT NULL UNIQUE,
     name                TEXT        NOT NULL,
     tagline             TEXT        NOT NULL DEFAULT '',
@@ -40,8 +38,8 @@ CREATE TABLE branches (
 );
 
 CREATE TABLE branch_images (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id   UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    id          BIGSERIAL PRIMARY KEY,
+    branch_id   BIGINT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
     image_url   TEXT NOT NULL,
     caption     TEXT NOT NULL DEFAULT '',
     sort_order  INT  NOT NULL DEFAULT 0,
@@ -51,7 +49,7 @@ CREATE INDEX idx_branch_images_branch ON branch_images (branch_id, sort_order);
 
 -- สิ่งอำนวยความสะดวก (แม่แบบกลาง + ผูกกับสาขา)
 CREATE TABLE amenities (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          BIGSERIAL PRIMARY KEY,
     code        TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL,
     icon        TEXT NOT NULL DEFAULT '',
@@ -59,15 +57,15 @@ CREATE TABLE amenities (
 );
 
 CREATE TABLE branch_amenities (
-    branch_id   UUID NOT NULL REFERENCES branches(id)  ON DELETE CASCADE,
-    amenity_id  UUID NOT NULL REFERENCES amenities(id) ON DELETE CASCADE,
+    branch_id   BIGINT NOT NULL REFERENCES branches(id)  ON DELETE CASCADE,
+    amenity_id  BIGINT NOT NULL REFERENCES amenities(id) ON DELETE CASCADE,
     PRIMARY KEY (branch_id, amenity_id)
 );
 
 -- สถานที่ใกล้เคียง (สถานศึกษา / ห้างสรรพสินค้า / โรงพยาบาล ...)
 CREATE TABLE nearby_places (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id   UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    id          BIGSERIAL PRIMARY KEY,
+    branch_id   BIGINT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
     category    TEXT NOT NULL,          -- education | shopping | hospital | transport | other
     name        TEXT NOT NULL,
     distance    TEXT NOT NULL DEFAULT '',
@@ -77,14 +75,14 @@ CREATE INDEX idx_nearby_branch ON nearby_places (branch_id, category, sort_order
 
 -- ---------------------------------------------------------------- ผู้ใช้งาน
 CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id              BIGSERIAL PRIMARY KEY,
     email           TEXT        NOT NULL UNIQUE,   -- เก็บเป็นตัวพิมพ์เล็กเสมอ (normalize ที่ชั้น service)
     password_hash   TEXT        NOT NULL,
     first_name      TEXT        NOT NULL,
     last_name       TEXT        NOT NULL,
     phone           TEXT        NOT NULL DEFAULT '',
     role            user_role   NOT NULL DEFAULT 'member',
-    branch_id       UUID        REFERENCES branches(id) ON DELETE SET NULL, -- สาขาที่ admin รับผิดชอบ
+    branch_id       BIGINT        REFERENCES branches(id) ON DELETE SET NULL, -- สาขาที่ admin รับผิดชอบ
     avatar_url      TEXT        NOT NULL DEFAULT '',
     is_active       BOOLEAN     NOT NULL DEFAULT TRUE,
     last_login_at   TIMESTAMPTZ,
@@ -99,8 +97,8 @@ CREATE TABLE users (
 CREATE INDEX idx_users_role_branch ON users (role, branch_id);
 
 CREATE TABLE refresh_tokens (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash  TEXT NOT NULL UNIQUE,
     expires_at  TIMESTAMPTZ NOT NULL,
     revoked_at  TIMESTAMPTZ,
@@ -110,8 +108,8 @@ CREATE INDEX idx_refresh_user ON refresh_tokens (user_id);
 
 -- ---------------------------------------------------------------- ห้องพัก
 CREATE TABLE room_types (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id   UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    id          BIGSERIAL PRIMARY KEY,
+    branch_id   BIGINT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
     name        TEXT NOT NULL,                  -- เช่น ห้องพัดลม, ห้องแอร์, ห้องเปล่า
     description TEXT NOT NULL DEFAULT '',
     size_sqm    NUMERIC(6, 2),
@@ -121,9 +119,9 @@ CREATE TABLE room_types (
 );
 
 CREATE TABLE rooms (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    branch_id       UUID        NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    room_type_id    UUID        REFERENCES room_types(id) ON DELETE SET NULL,
+    id              BIGSERIAL PRIMARY KEY,
+    branch_id       BIGINT        NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    room_type_id    BIGINT        REFERENCES room_types(id) ON DELETE SET NULL,
     room_number     TEXT        NOT NULL,
     building        TEXT        NOT NULL DEFAULT '1',
     floor           INT         NOT NULL DEFAULT 1,
@@ -143,14 +141,14 @@ CREATE TABLE rooms (
 CREATE INDEX idx_rooms_search ON rooms (branch_id, stay_type, status) WHERE is_active;
 
 CREATE TABLE room_amenities (
-    room_id     UUID NOT NULL REFERENCES rooms(id)     ON DELETE CASCADE,
-    amenity_id  UUID NOT NULL REFERENCES amenities(id) ON DELETE CASCADE,
+    room_id     BIGINT NOT NULL REFERENCES rooms(id)     ON DELETE CASCADE,
+    amenity_id  BIGINT NOT NULL REFERENCES amenities(id) ON DELETE CASCADE,
     PRIMARY KEY (room_id, amenity_id)
 );
 
 CREATE TABLE room_images (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    room_id     UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    id          BIGSERIAL PRIMARY KEY,
+    room_id     BIGINT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
     image_url   TEXT NOT NULL,
     sort_order  INT  NOT NULL DEFAULT 0
 );
@@ -160,11 +158,11 @@ CREATE INDEX idx_room_images_room ON room_images (room_id, sort_order);
 CREATE SEQUENCE booking_code_seq START 1;
 
 CREATE TABLE bookings (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id                  BIGSERIAL PRIMARY KEY,
     code                TEXT        NOT NULL UNIQUE,
-    user_id             UUID        NOT NULL REFERENCES users(id)    ON DELETE RESTRICT,
-    branch_id           UUID        NOT NULL REFERENCES branches(id) ON DELETE RESTRICT,
-    room_id             UUID        NOT NULL REFERENCES rooms(id)    ON DELETE RESTRICT,
+    user_id             BIGINT        NOT NULL REFERENCES users(id)    ON DELETE RESTRICT,
+    branch_id           BIGINT        NOT NULL REFERENCES branches(id) ON DELETE RESTRICT,
+    room_id             BIGINT        NOT NULL REFERENCES rooms(id)    ON DELETE RESTRICT,
     stay_type           stay_type   NOT NULL,
 
     -- ผู้เข้าพัก (กรอกในแบบฟอร์มจอง อาจต่างจากเจ้าของบัญชี)
@@ -187,7 +185,7 @@ CREATE TABLE bookings (
     total_amount        NUMERIC(12, 2) NOT NULL,
     status              booking_status NOT NULL DEFAULT 'pending_payment',
     reject_reason       TEXT        NOT NULL DEFAULT '',
-    reviewed_by         UUID        REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_by         BIGINT        REFERENCES users(id) ON DELETE SET NULL,
     reviewed_at         TIMESTAMPTZ,
     cancelled_at        TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -206,14 +204,14 @@ CREATE INDEX idx_bookings_room   ON bookings (room_id, status);
 
 -- ---------------------------------------------------------------- การชำระเงิน
 CREATE TABLE payments (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    booking_id      UUID        NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    id              BIGSERIAL PRIMARY KEY,
+    booking_id      BIGINT        NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
     amount          NUMERIC(12, 2) NOT NULL,
     transferred_at  TIMESTAMPTZ NOT NULL,        -- วันที่+เวลาที่โอน
     slip_url        TEXT        NOT NULL,
     note            TEXT        NOT NULL DEFAULT '',
     status          payment_status NOT NULL DEFAULT 'submitted',
-    reviewed_by     UUID        REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_by     BIGINT        REFERENCES users(id) ON DELETE SET NULL,
     reviewed_at     TIMESTAMPTZ,
     reject_reason   TEXT        NOT NULL DEFAULT '',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -222,8 +220,8 @@ CREATE INDEX idx_payments_booking ON payments (booking_id, created_at DESC);
 
 -- ---------------------------------------------------------------- แจ้งเตือน + activity log
 CREATE TABLE notifications (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title       TEXT NOT NULL,
     body        TEXT NOT NULL DEFAULT '',
     link        TEXT NOT NULL DEFAULT '',
@@ -233,11 +231,11 @@ CREATE TABLE notifications (
 CREATE INDEX idx_notifications_user ON notifications (user_id, created_at DESC);
 
 CREATE TABLE activity_logs (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    actor_id    UUID        REFERENCES users(id) ON DELETE SET NULL,
+    id          BIGSERIAL PRIMARY KEY,
+    actor_id    BIGINT        REFERENCES users(id) ON DELETE SET NULL,
     actor_role  user_role   NOT NULL,
     actor_name  TEXT        NOT NULL DEFAULT '',
-    branch_id   UUID        REFERENCES branches(id) ON DELETE SET NULL,
+    branch_id   BIGINT        REFERENCES branches(id) ON DELETE SET NULL,
     action      TEXT        NOT NULL,           -- booking.approve, room.update, auth.login ...
     entity_type TEXT        NOT NULL DEFAULT '',
     entity_id   TEXT        NOT NULL DEFAULT '',

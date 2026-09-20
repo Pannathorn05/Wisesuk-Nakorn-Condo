@@ -3,8 +3,6 @@ package reporting
 import (
 	"context"
 
-	"github.com/google/uuid"
-
 	"backend/internal/middleware"
 	"backend/internal/modules/booking"
 	"backend/internal/modules/room"
@@ -23,7 +21,10 @@ func NewService(repo *Repository, rooms *room.Service, bookings *booking.Service
 	return &Service{repo: repo, rooms: rooms, bookings: bookings}
 }
 
-// Dashboard — admin เห็นเฉพาะสาขาตัวเอง, superadmin เห็นทุกสาขา
+// dashboardActivities คือจำนวนกิจกรรมล่าสุดที่แสดงบนแดชบอร์ด
+const dashboardActivities = 10
+
+// Dashboard — admin เห็นเฉพาะสาขาที่ตนดูแล, superadmin เห็นทุกสาขา
 func (s *Service) Dashboard(ctx context.Context, identity middleware.Identity) (*Dashboard, error) {
 	branchID, err := access.Branch(identity, nil)
 	if err != nil {
@@ -34,18 +35,19 @@ func (s *Service) Dashboard(ctx context.Context, identity middleware.Identity) (
 	if err != nil {
 		return nil, err
 	}
-	recent, err := s.bookings.Recent(ctx, branchID, 10)
+	recent, _, err := s.repo.ListLogs(ctx, ListParams{BranchID: branchID, Limit: dashboardActivities})
 	if err != nil {
-		return nil, err
+		return nil, access.MapErr(err)
 	}
-	return &Dashboard{Branches: stats, Recent: recent}, nil
+	return &Dashboard{Branches: stats, RecentActivities: recent}, nil
 }
 
 type ActivityFilter struct {
-	ActorID   *uuid.UUID
+	ActorID   *types.UserID
 	ActorRole *types.Role
-	BranchID  *uuid.UUID
+	BranchID  *types.BranchID
 	Action    string
+	Search    string
 	Limit     int
 	Offset    int
 }
@@ -61,6 +63,7 @@ func (s *Service) ActivityLogs(ctx context.Context, identity middleware.Identity
 		ActorRole: f.ActorRole,
 		BranchID:  branchID,
 		Action:    f.Action,
+		Search:    f.Search,
 		Limit:     f.Limit,
 		Offset:    f.Offset,
 	})

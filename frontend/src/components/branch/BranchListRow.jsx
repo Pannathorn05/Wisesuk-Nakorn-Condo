@@ -56,7 +56,7 @@ export function BranchListRow({ branch }) {
           <span className="branch-row__availability">
             <IconBed width={18} height={18} /> {getBranchStayAvailabilityText(branch)}
           </span>
-          <Link to={`/branches/${branch.id}`} className="btn btn-primary">
+          <Link to={`/branches/${branch.slug}`} className="btn btn-primary">
             ดูรายละเอียด →
           </Link>
         </div>

@@ -68,7 +68,7 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: "^ast-[0-9]+$"
       responses:
         '200':
           description: เนื้อไฟล์รูป
@@ -199,6 +199,70 @@ paths:
         '204':
           description: ตอบ 204 เสมอ ไม่ว่า token จะใช้ได้หรือไม่
 
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [auth]
+      summary: ขอลิงก์รีเซ็ตรหัสผ่านทางอีเมล
+      description: |
+        ตอบ 204 เสมอไม่ว่าอีเมลจะมีบัญชีอยู่จริงหรือไม่ เพื่อไม่ให้ใช้ endpoint นี้
+        ไล่เดาว่าอีเมลใดมีบัญชีในระบบ (ดู AC-23 ใน docs/SPEC.md)
+
+        ถ้าอีเมลมีบัญชีที่ยังเปิดใช้งานอยู่ ระบบจะส่งอีเมลที่มีลิงก์
+        `PUBLIC_APP_URL/reset-password?token=...` ให้ โดย token มีอายุ 15 นาที
+        และใช้ได้ครั้งเดียว ขอใหม่แล้วใบเก่าทุกใบใช้ไม่ได้ทันที
+
+        ขอซ้ำเกิน 5 ครั้งใน 1 ชั่วโมงต่ออีเมล ยังได้ 204 แต่จะไม่มีอีเมลถูกส่ง
+      operationId: forgotPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '204':
+          description: รับคำขอแล้ว — ตอบเหมือนกันทุกกรณี ไม่บอกใบ้ว่าอีเมลมีบัญชีหรือไม่
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/auth/reset-password:
+    post:
+      tags: [auth]
+      summary: ตั้งรหัสผ่านใหม่ด้วย token จากอีเมล
+      description: |
+        สำเร็จแล้ว refresh token ทุกใบของบัญชีนั้นถูกเพิกถอนทันที
+        (access token ใบเดิมยังใช้ได้จนหมดอายุ เหมือน AC-3)
+
+        token ที่ผิด/หมดอายุ/ถูกใช้ไปแล้ว/ถูกแทนที่ ตอบ 422 ด้วยข้อความเดียวกันทุกกรณี
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '204':
+          description: ตั้งรหัสผ่านใหม่สำเร็จ เข้าสู่ระบบด้วยรหัสใหม่ได้ทันที
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          description: token ใช้ไม่ได้ หรือรหัสผ่านใหม่ผิดกติกา
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: validation_failed
+                  message: ข้อมูลไม่ถูกต้อง
+                  fields:
+                    token: ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุแล้ว
+
   /api/v1/branches:
     get:
       tags: [guest]
@@ -263,7 +327,7 @@ paths:
           required: false
           schema:
             type: string
-            format: uuid
+            pattern: "^brn-[0-9]+$"
       responses:
         '200':
           description: รายการประเภทห้อง
@@ -285,12 +349,12 @@ paths:
           in: query
           schema:
             type: string
-            format: uuid
+            pattern: "^brn-[0-9]+$"
         - name: room_type_id
           in: query
           schema:
             type: string
-            format: uuid
+            pattern: "^rmt-[0-9]+$"
         - name: stay_type
           in: query
           schema:
@@ -452,7 +516,7 @@ paths:
               properties:
                 id:
                   type: string
-                  format: uuid
+                  pattern: "^ntf-[0-9]+$"
       responses:
         '204':
           description: สำเร็จ ตอบ 204 แม้ id ไม่ใช่ของตัวเองหรือไม่มีจริง
@@ -656,24 +720,28 @@ paths:
     get:
       tags: [admin]
       summary: แดชบอร์ดผู้ดูแล
+      description: >
+        Admin ได้ BranchSummary ของสาขาตัวเองรายการเดียว
+        ส่วน Super Admin ได้ครบทุกสาขา
       operationId: getAdminDashboard
       responses:
         '200':
-          description: สรุปข้อมูลรายสาขาและรายการล่าสุด
+          description: สรุปข้อมูลรายสาขาและกิจกรรมล่าสุด
           content:
             application/json:
               schema:
                 type: object
-                required: [branches, recent]
+                required: [branches, recent_activities]
                 properties:
                   branches:
                     type: array
                     items:
                       $ref: '#/components/schemas/BranchSummary'
-                  recent:
+                  recent_activities:
                     type: array
+                    description: กิจกรรมล่าสุด 10 รายการในสาขาที่มีสิทธิ์เห็น เรียงใหม่ไปเก่า
                     items:
-                      $ref: '#/components/schemas/Booking'
+                      $ref: '#/components/schemas/ActivityLog'
 
   /api/v1/admin/activity-logs:
     get:
@@ -681,6 +749,11 @@ paths:
       summary: บันทึกการกระทำ
       operationId: listActivityLogs
       parameters:
+        - name: search
+          in: query
+          description: ค้นจากชื่อผู้กระทำ ชื่อสาขา หรือรหัสอ้างอิงของสิ่งที่ถูกกระทำ (ไม่สนตัวพิมพ์เล็กใหญ่)
+          schema:
+            type: string
         - name: actor_role
           in: query
           schema:
@@ -689,7 +762,7 @@ paths:
           in: query
           schema:
             type: string
-            format: uuid
+            pattern: "^usr-[0-9]+$"
         - name: action
           in: query
           schema:
@@ -893,7 +966,7 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: "^usr-[0-9]+$"
         - $ref: '#/components/parameters/Page'
       responses:
         '200':
@@ -922,7 +995,7 @@ paths:
           in: query
           schema:
             type: string
-            format: uuid
+            pattern: "^rmt-[0-9]+$"
         - name: status
           in: query
           schema:
@@ -1141,7 +1214,7 @@ paths:
                   type: array
                   items:
                     type: string
-                    format: uuid
+                    pattern: "^amt-[0-9]+$"
       responses:
         '200':
           description: บันทึกสำเร็จ
@@ -1316,7 +1389,7 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            pattern: "^bimg-[0-9]+$"
         - $ref: '#/components/parameters/BranchIDQuery'
       responses:
         '204':
@@ -1473,39 +1546,46 @@ components:
       name: branch_id
       in: query
       required: false
-      description: ผู้ดูแลระบุสาขาอื่นที่ไม่ใช่ของตัวเองไม่ได้ จะได้ 403
+      description: >
+        เจาะดูเฉพาะสาขาเดียว — Admin ระบุสาขาอื่นที่ไม่ใช่ของตัวเองไม่ได้ จะได้ 403
+        ไม่ระบุ = สาขาของตัวเองสำหรับ Admin และทุกสาขาสำหรับ Super Admin
       schema:
         type: string
-        format: uuid
+        pattern: "^brn-[0-9]+$"
     BranchIDPath:
       name: branchID
       in: path
       required: true
+      description: id ของสาขา (brn-001) หรือ slug (เช่น prachauthit-45)
       schema:
         type: string
-        format: uuid
+      examples:
+        slug:
+          value: prachauthit-45
+        id:
+          value: brn-003
     RoomIDPath:
       name: roomID
       in: path
       required: true
       schema:
         type: string
-        format: uuid
+        pattern: "^rm-[0-9]+$"
     BookingIDPath:
       name: bookingID
       in: path
       required: true
-      description: UUID ของการจอง ไม่ใช่ booking_code
+      description: id ของการจอง (bkg-001) ไม่ใช่ booking_code
       schema:
         type: string
-        format: uuid
+        pattern: "^bkg-[0-9]+$"
     UserIDPath:
       name: userID
       in: path
       required: true
       schema:
         type: string
-        format: uuid
+        pattern: "^usr-[0-9]+$"
 
   responses:
     BadRequest:
@@ -1623,11 +1703,16 @@ components:
 
     UserRole:
       type: string
-      enum: [member, admin, super_admin]
+      description: >
+        ตรงกับ enum user_role ใน PostgreSQL — สะกดติดกันไม่มีขีดล่าง
+        frontend ใช้ค่านี้ตัดสินใจว่าจะพาผู้ใช้ไปหน้าไหนหลังล็อกอิน
+        (member → หน้าสมาชิก, admin → หน้าผู้ดูแล, superadmin → หน้าหัวหน้าผู้ดูแล)
+      enum: [member, admin, superadmin]
 
     ActorRole:
       type: string
-      enum: [member, admin, super_admin, system]
+      description: ใช้ enum เดียวกับ UserRole เพราะคอลัมน์ activity_logs.actor_role เป็นชนิด user_role
+      enum: [member, admin, superadmin]
 
     PaymentStatus:
       type: string
@@ -1635,30 +1720,37 @@ components:
 
     ActivityAction:
       type: string
+      description: >
+        ค่าที่ระบบบันทึกจริง แบ่งเป็นกลุ่มตามคำนำหน้า
+        auth (เข้าใช้งาน) · user (ผู้ใช้แก้ข้อมูลตัวเอง) · booking · room · branch · admin (จัดการบัญชีผู้ดูแล)
       enum:
-        - user.register
-        - profile.update
-        - password.change
+        - auth.register
+        - auth.login
+        - auth.oauth_register
+        - auth.oauth_login
+        - auth.oauth_link
+        - user.update_profile
+        - user.change_password
         - booking.create
-        - payment.submit
-        - booking.cancel_by_member
-        - booking.cancel_by_admin
+        - booking.submit_payment
+        - booking.cancel
         - booking.approve
         - booking.reject
-        - booking.appointment_set
+        - booking.set_appointment
         - room.create
         - room.update
-        - room.status_change
+        - room.update_status
+        - room.update_image
         - room.delete
         - branch.update
-        - branch.amenities_update
-        - branch.nearby_update
-        - branch.image_add
-        - branch.image_delete
-        - staff.create
-        - staff.update
-        - staff.delete
-        - booking.auto_expire
+        - branch.set_amenities
+        - branch.update_nearby
+        - branch.update_cover
+        - branch.add_image
+        - branch.delete_image
+        - admin.create
+        - admin.update
+        - admin.delete
 
     PageMeta:
       type: object
@@ -1679,7 +1771,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^usr-[0-9]+$"
         email:
           type: string
           format: email
@@ -1693,9 +1785,19 @@ components:
           $ref: '#/components/schemas/UserRole'
         branch_id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
           nullable: true
-          description: มีค่าเฉพาะ role = admin
+          description: >
+            สาขาที่รับผิดชอบ มีค่าเฉพาะ role = admin ซึ่งผูกกับสาขาเดียวเสมอ
+            (superadmin เข้าถึงทุกสาขาอยู่แล้วจึงไม่ผูกกับสาขาใด)
+        branch_name:
+          type: string
+          description: ชื่อของสาขาข้างบน ส่งมาด้วยเพื่อให้ตารางแสดงผลได้โดยไม่ต้องยิงถามรายการสาขาซ้ำ
+        must_change_password:
+          type: boolean
+          description: >
+            true เมื่อบัญชีนี้ยังใช้รหัสผ่านตั้งต้นที่ระบบกำหนดให้ตอนสร้าง
+            frontend ต้องบังคับให้ตั้งรหัสผ่านใหม่ก่อนใช้งานส่วนอื่น
         avatar_url:
           type: string
           nullable: true
@@ -1765,6 +1867,28 @@ components:
         refresh_token:
           type: string
 
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, new_password, confirm_password]
+      properties:
+        token:
+          type: string
+          description: token ดิบจาก query string ของลิงก์ในอีเมล (ฐานข้อมูลเก็บแค่ sha256 hash)
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 72
+        confirm_password:
+          type: string
+
     UpdateProfileRequest:
       type: object
       properties:
@@ -1803,7 +1927,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^amt-[0-9]+$"
         name:
           type: string
         icon:
@@ -1816,10 +1940,10 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^rmt-[0-9]+$"
         branch_id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
           nullable: true
         name:
           type: string
@@ -1833,7 +1957,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^bimg-[0-9]+$"
         image_url:
           type: string
           format: uri
@@ -1863,7 +1987,7 @@ components:
           properties:
             id:
               type: string
-              format: uuid
+              pattern: "^np-[0-9]+$"
         - $ref: '#/components/schemas/NearbyPlaceInput'
 
     Branch:
@@ -1872,7 +1996,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
         name:
           type: string
         address:
@@ -1892,21 +2016,31 @@ components:
 
     BranchSummary:
       type: object
-      required: [branch_id, name]
+      description: ตัวเลขสรุปรายสาขาที่แสดงเป็นการ์ด 3 ใบบนแดชบอร์ด
+      required: [branch_id, branch_name, daily_rooms_free, daily_rooms_total,
+                 monthly_rooms_free, monthly_rooms_total, pending_review, bookings_total]
       properties:
         branch_id:
           type: string
-          format: uuid
-        name:
+          pattern: "^brn-[0-9]+$"
+        branch_name:
           type: string
-        total_rooms:
+        daily_rooms_free:
           type: integer
-        available_rooms:
+          description: การ์ด "ห้องว่างรายวันวันนี้" ตัวเศษ
+        daily_rooms_total:
           type: integer
-        occupied_rooms:
+          description: การ์ด "ห้องว่างรายวันวันนี้" ตัวส่วน — นับเฉพาะห้องที่ is_active
+        monthly_rooms_free:
           type: integer
-        pending_bookings:
+        monthly_rooms_total:
           type: integer
+        pending_review:
+          type: integer
+          description: การ์ด "รอตรวจสอบการจอง" ตัวเศษ — ใบที่สถานะ awaiting_review
+        bookings_total:
+          type: integer
+          description: การ์ด "รอตรวจสอบการจอง" ตัวส่วน — ใบจองทั้งหมดของสาขานี้
 
     BranchDetail:
       allOf:
@@ -1948,13 +2082,13 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^rm-[0-9]+$"
         branch_id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
         room_type_id:
           type: string
-          format: uuid
+          pattern: "^rmt-[0-9]+$"
           nullable: true
         room_number:
           type: string
@@ -1984,10 +2118,10 @@ components:
       properties:
         branch_id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
         room_type_id:
           type: string
-          format: uuid
+          pattern: "^rmt-[0-9]+$"
           nullable: true
         room_number:
           type: string
@@ -2010,7 +2144,7 @@ components:
       properties:
         room_type_id:
           type: string
-          format: uuid
+          pattern: "^rmt-[0-9]+$"
           nullable: true
         room_number:
           type: string
@@ -2034,7 +2168,7 @@ components:
       properties:
         room_id:
           type: string
-          format: uuid
+          pattern: "^rm-[0-9]+$"
         stay_type:
           $ref: '#/components/schemas/StayType'
         guest_first_name:
@@ -2073,20 +2207,20 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^bkg-[0-9]+$"
         booking_code:
           type: string
           pattern: '^PT-[0-9]{6,}$'
           description: ใช้แสดงผลและค้นหาเท่านั้น ห้ามใช้อ้างอิงใน URL
         room_id:
           type: string
-          format: uuid
+          pattern: "^rm-[0-9]+$"
         branch_id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
         user_id:
           type: string
-          format: uuid
+          pattern: "^usr-[0-9]+$"
         stay_type:
           $ref: '#/components/schemas/StayType'
         status:
@@ -2153,7 +2287,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^pay-[0-9]+$"
         amount:
           type: number
           description: ยอดที่ผู้ใช้แจ้ง อาจไม่ตรงกับ total_amount ให้ผู้ดูแลเป็นผู้ตัดสิน
@@ -2179,7 +2313,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^ntf-[0-9]+$"
         title:
           type: string
           nullable: true
@@ -2196,50 +2330,58 @@ components:
 
     ActivityLog:
       type: object
+      description: หนึ่งบรรทัดในหน้า "ประวัติการใช้งาน" และในกล่องกิจกรรมล่าสุดบนแดชบอร์ด
       required: [id, actor_name, actor_role, action, created_at]
       properties:
         id:
           type: string
-          format: uuid
+          pattern: "^log-[0-9]+$"
         actor_id:
           type: string
-          format: uuid
+          pattern: "^usr-[0-9]+$"
           nullable: true
-          description: เป็น null เมื่อผู้ทำเป็นระบบ (booking.auto_expire)
+          description: ไม่ถูกส่งมาเมื่อหาเจ้าของการกระทำไม่ได้แล้ว เช่นบัญชีถูกลบไป
         actor_name:
           type: string
+          description: คอลัมน์ "ผู้กระทำ" — ชื่อที่คัดลอกไว้ตอนบันทึก จึงไม่เปลี่ยนตามการแก้โปรไฟล์ภายหลัง
         actor_role:
           $ref: '#/components/schemas/ActorRole'
         branch_id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
           nullable: true
+        branch_name:
+          type: string
+          description: ชื่อสาขาที่ join มาให้แล้ว ไม่ต้องยิงถามสาขาซ้ำเพื่อแสดงผล
         action:
           $ref: '#/components/schemas/ActivityAction'
         entity_type:
           type: string
-          nullable: true
+          description: ชนิดของสิ่งที่ถูกกระทำ เช่น booking, room, branch, user
         entity_id:
           type: string
-          nullable: true
-        ip:
+          description: id ของสิ่งที่ถูกกระทำ เช่น bkg-012
+        detail:
+          type: object
+          additionalProperties: true
+          description: ข้อมูลเพิ่มเติมรายกรณี ไม่มีรูปร่างตายตัว — เป็น object ว่างเมื่อไม่มีอะไรจะบันทึก
+        ip_address:
           type: string
-          nullable: true
+          description: คอลัมน์ "IP Address" — เป็นสตริงว่างเมื่ออ่านค่าไม่ได้
         created_at:
           type: string
           format: date-time
 
     CreateStaffRequest:
       type: object
-      required: [email, password, first_name, last_name, phone, branch_id]
+      required: [email, first_name, last_name, phone, branch_id]
+      description: >
+        ไม่รับรหัสผ่าน — ระบบตั้งรหัสผ่านตั้งต้นร่วมจาก env STAFF_DEFAULT_PASSWORD ให้เอง
+        แล้วตั้ง must_change_password = true บัญชีใหม่จึงต้องเปลี่ยนรหัสผ่านก่อนใช้งานจริง
       properties:
         email:
           type: string
           format: email
-        password:
-          type: string
-          minLength: 8
-          maxLength: 72
         first_name:
           type: string
           minLength: 1
@@ -2253,7 +2395,10 @@ components:
           pattern: '^[0-9]{9,10}$'
         branch_id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
+          description: >
+            สาขาที่รับผิดชอบ เลือกได้สาขาเดียว
+            เลือกสาขาที่มีผู้ดูแลอยู่แล้วจะได้ 422 เพราะหนึ่งสาขามีผู้ดูแลได้คนเดียว
 
     UpdateStaffRequest:
       type: object
@@ -2271,10 +2416,15 @@ components:
           pattern: '^[0-9]{9,10}$'
         branch_id:
           type: string
-          format: uuid
+          pattern: "^brn-[0-9]+$"
+          description: >
+            ย้ายไปรับผิดชอบสาขานี้แทนสาขาเดิม
+            บังคับเมื่อเป้าหมาย role = admin และต้องไม่ส่งมาเมื่อเป้าหมายเป็น superadmin
+            ย้ายไปสาขาที่มีผู้ดูแลอยู่แล้วจะได้ 422
         is_active:
           type: boolean
         password:
           type: string
           minLength: 8
           maxLength: 72
+          description: ตั้งรหัสผ่านใหม่ให้ผู้ดูแลคนนี้ — ส่งมาแล้ว must_change_password จะถูกตั้งเป็น true

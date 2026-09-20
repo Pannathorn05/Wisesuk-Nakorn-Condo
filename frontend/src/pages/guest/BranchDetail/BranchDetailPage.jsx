@@ -31,7 +31,7 @@ export function BranchDetailPage() {
   const { branch, loading, error, refetch } = useBranchDetail(branchId);
   const { activeBranches } = useBranches();
 
-  const otherBranches = activeBranches.filter((b) => b.id !== branchId).slice(0, 2);
+  const otherBranches = activeBranches.filter((b) => b.id !== branchId && b.slug !== branchId).slice(0, 2);
 
   const goToTab = (tab) => {
     navigate(tab === "map" ? `/branches/${branchId}/map` : `/branches/${branchId}`);

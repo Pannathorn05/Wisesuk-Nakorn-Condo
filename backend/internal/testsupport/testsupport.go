@@ -151,12 +151,12 @@ func NewApp(t *testing.T) App {
 //
 // มี 2 สาขาเพราะกฎเหล็กเรื่อง admin ผูกสาขาเดียวต้องมีสาขาที่สองไว้ทดสอบการข้ามสาขาเสมอ
 type Fixture struct {
-	BranchAID    uuid.UUID
-	BranchBID    uuid.UUID
-	SuperAdminID uuid.UUID
-	AdminAID     uuid.UUID
-	AdminBID     uuid.UUID
-	MemberID     uuid.UUID
+	BranchAID    types.BranchID
+	BranchBID    types.BranchID
+	SuperAdminID types.UserID
+	AdminAID     types.UserID
+	AdminBID     types.UserID
+	MemberID     types.UserID
 }
 
 // Seed ใส่ข้อมูลตั้งต้นขั้นต่ำ: 2 สาขา, super admin, admin ประจำแต่ละสาขา และสมาชิก 1 คน
@@ -182,12 +182,12 @@ func Seed(t *testing.T, pool *pgxpool.Pool) Fixture {
 
 // AccessToken ออก access token ให้ผู้ใช้ที่ระบุ โดยอ่าน role และสาขาจากฐานข้อมูลจริง
 // เทสจึงไม่ต้องรู้ว่า claim หน้าตาเป็นอย่างไร
-func AccessToken(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) string {
+func AccessToken(t *testing.T, pool *pgxpool.Pool, userID types.UserID) string {
 	t.Helper()
 
 	var (
 		role     types.Role
-		branchID *uuid.UUID
+		branchID *types.BranchID
 		name     string
 	)
 	const q = `SELECT role, branch_id, first_name || ' ' || last_name FROM users WHERE id = $1`
@@ -322,9 +322,9 @@ func replaceDatabase(t *testing.T, dsn, dbName string) string {
 	return u.String()
 }
 
-func insertBranch(t *testing.T, pool *pgxpool.Pool, slug, name string) uuid.UUID {
+func insertBranch(t *testing.T, pool *pgxpool.Pool, slug, name string) types.BranchID {
 	t.Helper()
-	var id uuid.UUID
+	var id types.BranchID
 	const q = `INSERT INTO branches (slug, name) VALUES ($1, $2) RETURNING id`
 	if err := pool.QueryRow(context.Background(), q, slug, name).Scan(&id); err != nil {
 		t.Fatalf("สร้างสาขา %s ไม่สำเร็จ: %v", slug, err)
@@ -332,9 +332,9 @@ func insertBranch(t *testing.T, pool *pgxpool.Pool, slug, name string) uuid.UUID
 	return id
 }
 
-func insertUser(t *testing.T, pool *pgxpool.Pool, email, hash string, role types.Role, branchID *uuid.UUID) uuid.UUID {
+func insertUser(t *testing.T, pool *pgxpool.Pool, email, hash string, role types.Role, branchID *types.BranchID) types.UserID {
 	t.Helper()
-	var id uuid.UUID
+	var id types.UserID
 	const q = `
 		INSERT INTO users (email, password_hash, first_name, last_name, phone, role, branch_id)
 		VALUES ($1, $2, $3, $4, '0800000000', $5, $6)

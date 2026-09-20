@@ -29,6 +29,22 @@ type Config struct {
 	AllowedOrigins  []string
 	BcryptCost      int
 	SeedAdminSecret string
+
+	// StaffDefaultPassword คือรหัสผ่านตั้งต้นของบัญชีผู้ดูแลที่หัวหน้าผู้ดูแลสร้างจากหน้าเว็บ
+	// (ฟอร์มไม่มีช่องรหัสผ่าน) บัญชีที่ได้รหัสนี้จะถูกบังคับให้ตั้งรหัสใหม่ก่อนใช้งานจริง
+	// ไม่ตั้งค่าไว้ จะยืมค่าเดียวกับตอน seed เพื่อไม่ให้ต้องจำสองค่าตอน dev
+	StaffDefaultPassword string
+
+	// เข้าสู่ระบบด้วยบัญชีภายนอก — เว้นว่างไว้ได้ provider ที่ไม่มี client id/secret
+	// จะถูกปิดไปเองโดยไม่ทำให้ระบบทั้งระบบรันไม่ขึ้น
+	GoogleClientID       string
+	GoogleClientSecret   string
+	FacebookClientID     string
+	FacebookClientSecret string
+
+	// FrontendOAuthCallbackURL คือหน้าเว็บฝั่ง frontend ที่ผู้ใช้จะถูกส่งกลับไปหลัง
+	// ยืนยันตัวตนเสร็จ พร้อม code หรือ error ใน query string
+	FrontendOAuthCallbackURL string
 }
 
 // Load อ่านค่าจาก .env (ถ้ามี) แล้วทับด้วย environment variable จริง
@@ -51,6 +67,15 @@ func Load() (*Config, error) {
 		AllowedOrigins:  splitAndTrim(getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
 		BcryptCost:      getEnvInt("BCRYPT_COST", 12),
 		SeedAdminSecret: getEnv("SEED_DEFAULT_PASSWORD", "Wisetsuk!2026"),
+		StaffDefaultPassword: getEnv("STAFF_DEFAULT_PASSWORD",
+			getEnv("SEED_DEFAULT_PASSWORD", "Wisetsuk!2026")),
+
+		GoogleClientID:       getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret:   getEnv("GOOGLE_CLIENT_SECRET", ""),
+		FacebookClientID:     getEnv("FACEBOOK_CLIENT_ID", ""),
+		FacebookClientSecret: getEnv("FACEBOOK_CLIENT_SECRET", ""),
+		FrontendOAuthCallbackURL: getEnv("FRONTEND_OAUTH_CALLBACK_URL",
+			"http://localhost:3000/auth/callback"),
 	}
 
 	if cfg.DatabaseURL == "" {

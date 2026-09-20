@@ -11,8 +11,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
 	"backend/internal/middleware"
 	"backend/internal/shared/types"
@@ -20,26 +18,26 @@ import (
 
 // Log คือหนึ่งบรรทัดในหน้า "ประวัติการใช้งาน"
 type Log struct {
-	ID         uuid.UUID      `json:"id"`
-	ActorID    *uuid.UUID     `json:"actor_id,omitempty"`
-	ActorRole  types.Role     `json:"actor_role"`
-	ActorName  string         `json:"actor_name"`
-	BranchID   *uuid.UUID     `json:"branch_id,omitempty"`
-	BranchName string         `json:"branch_name,omitempty"`
-	Action     string         `json:"action"`
-	EntityType string         `json:"entity_type"`
-	EntityID   string         `json:"entity_id"`
-	Detail     map[string]any `json:"detail"`
-	IPAddress  string         `json:"ip_address"`
-	CreatedAt  time.Time      `json:"created_at"`
+	ID         types.ActivityLogID `json:"id"`
+	ActorID    *types.UserID       `json:"actor_id,omitempty"`
+	ActorRole  types.Role          `json:"actor_role"`
+	ActorName  string              `json:"actor_name"`
+	BranchID   *types.BranchID     `json:"branch_id,omitempty"`
+	BranchName string              `json:"branch_name,omitempty"`
+	Action     string              `json:"action"`
+	EntityType string              `json:"entity_type"`
+	EntityID   string              `json:"entity_id"`
+	Detail     map[string]any      `json:"detail"`
+	IPAddress  string              `json:"ip_address"`
+	CreatedAt  time.Time           `json:"created_at"`
 }
 
 // Entry คือรายการที่จะบันทึก
 type Entry struct {
-	ActorID    *uuid.UUID
+	ActorID    *types.UserID
 	ActorRole  types.Role
 	ActorName  string
-	BranchID   *uuid.UUID
+	BranchID   *types.BranchID
 	Action     string
 	EntityType string
 	EntityID   string

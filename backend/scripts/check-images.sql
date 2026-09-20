@@ -15,14 +15,14 @@
 --   ส่วนที่ 4    blob ที่ไม่มีรูปสาขาไหนอ้างถึงแล้ว — กินที่เปล่า ๆ ลบทิ้งได้ถ้าต้องการ
 
 WITH img AS (
-    -- แกะ assetID ออกจาก image_url เฉพาะ URL ที่เป็นรูปแบบ /files/<uuid>
+    -- แกะ assetID ออกจาก image_url เฉพาะ URL ที่เป็นรูปแบบ /files/ast-001
     -- รูปที่โฮสต์ไว้ที่อื่น (เพิ่มผ่าน POST /admin/branch/images) จะได้ NULL
     -- แล้วถูกนับเป็น missing ตามที่ควร เพราะ blob ไม่ได้อยู่ในฐานข้อมูลนี้
     SELECT bi.id,
            bi.branch_id,
            bi.image_url,
-           CASE WHEN bi.image_url ~ '/files/[0-9a-fA-F-]{36}$'
-                THEN substring(bi.image_url from '/files/(.*)$')::uuid
+           CASE WHEN bi.image_url ~ '/files/ast-[0-9]+$'
+                THEN substring(bi.image_url from '/files/ast-([0-9]+)$')::bigint
            END AS asset_id
     FROM branch_images bi
 ),
@@ -55,7 +55,7 @@ SELECT '3. รูปหน้าปก',
        b.slug,
        (b.cover_image_url <> '')::int,
        (EXISTS(SELECT 1 FROM assets a
-               WHERE a.id = substring(b.cover_image_url from '/files/(.*)$')::uuid))::int,
+               WHERE a.id = substring(b.cover_image_url from '/files/ast-([0-9]+)$')::bigint))::int,
        0,
        coalesce(nullif(b.cover_image_url, ''), 'ยังไม่ได้ตั้งรูปปก')
 FROM branches b

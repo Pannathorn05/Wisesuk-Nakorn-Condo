@@ -11,3 +11,6 @@ desktop.ini
 
 .backend/docker/
 .backend/.env/
+
+docs/Diagram/
+docs/postman/

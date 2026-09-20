@@ -4,10 +4,10 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"backend/internal/httpx"
 	"backend/internal/middleware"
+	"backend/internal/shared/types"
 	"backend/internal/storage"
 )
 
@@ -31,7 +31,7 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // GET /api/v1/branches/:branchID — พร้อมรูป/สิ่งอำนวยความสะดวก/สถานที่ใกล้เคียง
-// รับได้ทั้ง UUID และ slug (เช่น prachauthit-45) เพื่อให้ URL ของหน้าเว็บอ่านรู้เรื่อง
+// รับได้ทั้ง id ที่เป็นตัวเลข และ slug (เช่น prachauthit-45) เพื่อให้ URL ของหน้าเว็บอ่านรู้เรื่อง
 func (h *Handler) Get(c *gin.Context) {
 	param := c.Param("branchID")
 
@@ -39,7 +39,7 @@ func (h *Handler) Get(c *gin.Context) {
 		b   *Branch
 		err error
 	)
-	if id, parseErr := uuid.Parse(param); parseErr == nil {
+	if id, parseErr := types.ParseID[types.Branch](param); parseErr == nil {
 		b, err = h.svc.Get(c.Request.Context(), id)
 	} else {
 		b, err = h.svc.GetBySlug(c.Request.Context(), param)
@@ -77,7 +77,7 @@ func (h *Handler) ListAll(c *gin.Context) {
 func (h *Handler) Update(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -100,14 +100,14 @@ func (h *Handler) Update(c *gin.Context) {
 func (h *Handler) SetAmenities(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
 	}
 
 	var in struct {
-		AmenityIDs []uuid.UUID `json:"amenity_ids"`
+		AmenityIDs []types.AmenityID `json:"amenity_ids"`
 	}
 	if err := httpx.DecodeJSON(c, &in); err != nil {
 		httpx.Error(c, err)
@@ -125,7 +125,7 @@ func (h *Handler) SetAmenities(c *gin.Context) {
 func (h *Handler) ReplaceNearby(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -152,7 +152,7 @@ func (h *Handler) ReplaceNearby(c *gin.Context) {
 func (h *Handler) UploadCover(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -178,7 +178,7 @@ func (h *Handler) UploadCover(c *gin.Context) {
 func (h *Handler) UploadImage(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -214,7 +214,7 @@ func (h *Handler) UploadImage(c *gin.Context) {
 func (h *Handler) AddImage(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
@@ -243,12 +243,12 @@ func (h *Handler) AddImage(c *gin.Context) {
 func (h *Handler) DeleteImage(c *gin.Context) {
 	identity := middleware.MustIdentity(c)
 
-	branchID, err := httpx.QueryUUID(c, "branch_id")
+	branchID, err := httpx.QueryID[types.Branch](c, "branch_id")
 	if err != nil {
 		httpx.Error(c, err)
 		return
 	}
-	imageID, err := httpx.ParseUUID(c.Param("imageID"))
+	imageID, err := httpx.ParseID[types.BranchImage](c.Param("imageID"))
 	if err != nil {
 		httpx.Error(c, err)
 		return

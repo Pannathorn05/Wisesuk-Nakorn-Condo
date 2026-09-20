@@ -10,7 +10,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+
+	"backend/internal/shared/types"
 )
 
 // ---------------------------------------------------------------- error type
@@ -206,10 +207,13 @@ func unknownFieldName(err error) (string, bool) {
 	return name, true
 }
 
-func ParseUUID(raw string) (uuid.UUID, error) {
-	id, err := uuid.Parse(raw)
+// ParseID อ่าน id ที่มี prefix ของตาราง E เช่น ParseID[types.Room]("rm-001")
+// prefix ผิดตารางหรือรูปแบบผิดคือ 400 พร้อมข้อความที่บอกว่าควรเป็นแบบไหน
+func ParseID[E types.Entity](raw string) (types.ID[E], error) {
+	id, err := types.ParseID[E](raw)
 	if err != nil {
-		return uuid.Nil, BadRequest(msgInvalidID).Wrap(err)
+		var zero types.ID[E]
+		return 0, BadRequest(msgInvalidID + " (ต้องอยู่ในรูปแบบ " + zero.Prefix() + "-001)").Wrap(err)
 	}
 	return id, nil
 }

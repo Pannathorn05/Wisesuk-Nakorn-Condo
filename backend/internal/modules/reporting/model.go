@@ -1,15 +1,16 @@
 package reporting
 
 import (
-	"backend/internal/modules/booking"
 	"backend/internal/modules/room"
+	"backend/internal/shared/audit"
 )
 
-// Dashboard คือหน้าแรกของแอดมิน — ตัวเลขห้องว่างรายสาขา + การจองล่าสุด
+// Dashboard คือหน้าแรกของผู้ดูแล — ตัวเลขห้องว่างรายสาขา + กิจกรรมล่าสุด
 //
-// เป็น model ที่ประกอบจากของ module อื่น จึงต้อง import room และ booking
-// (ทั้งสอง module ไม่ import reporting กลับ จึงไม่เกิด import cycle)
+// กล่องล่างเป็น activity log ไม่ใช่รายการจอง เพราะสิ่งที่ผู้ดูแลต้องรู้เมื่อเปิดหน้ามา
+// คือ "เกิดอะไรขึ้นบ้างตั้งแต่ครั้งก่อน" ซึ่งรวมการอนุมัติ การแก้ห้อง และการแก้สาขาด้วย
+// ไม่ใช่แค่ใบจองที่เข้ามาใหม่
 type Dashboard struct {
-	Branches []room.BranchStats `json:"branches"`
-	Recent   []booking.Booking  `json:"recent_bookings"`
+	Branches         []room.BranchStats `json:"branches"`
+	RecentActivities []audit.Log        `json:"recent_activities"`
 }

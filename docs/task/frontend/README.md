@@ -62,4 +62,7 @@
 - `Header.jsx` สลับปุ่ม login/register เป็นปุ่ม "ออกจากระบบ" ปุ่มเดียวเมื่อ login อยู่ (ตาม Gap ที่ตกลงไว้ในไฟล์ task — ไม่มี dropdown เมนูสมาชิกเพราะเข้าข่าย Member area ที่ห้ามทำ)
 - ตรวจแล้วด้วย browser จริง (Playwright) ต่อ backend ที่รันอยู่จริง ไม่ mock: สมัครสมาชิกจริงสำเร็จ → token เก็บถูกคีย์ → header เปลี่ยนเป็น "ออกจากระบบ" ทันที → logout แล้ว token ถูกลบ → login ซ้ำด้วยบัญชีเดิมสำเร็จ → เข้า `/login` ซ้ำตอน login อยู่แล้ว redirect กลับหน้าแรกอัตโนมัติ → รหัสผ่านผิดโชว์ข้อความจาก backend จริง ("อีเมลหรือรหัสผ่านไม่ถูกต้อง") → สมัครอีเมลซ้ำโชว์ field error ใต้ช่องอีเมลจริง ("อีเมลนี้ถูกใช้งานแล้ว") → ยืนยันรหัสผ่านไม่ตรงกันถูกกันไว้ฝั่ง client ก่อนยิง request จริง
 - `npm run build` compile สำเร็จไม่มี warning, `eslint` ทั้ง `src/` ผ่านสะอาด, responsive จริงที่ 390/1280px ไม่มี horizontal scroll ทั้ง Login/Register, backend ไม่ถูกแก้
+- **[ตกไปแล้ว 2026-09-10]** ลิงก์ "ลืมรหัสผ่าน?" → `/contact` — ตอนนี้ `docs/SPEC.md` AC-23 รับ "ลืมรหัสผ่าน" เข้า scope
+  และมี `POST /auth/forgot-password` + `POST /auth/reset-password` ใน `docs/openapi.yaml` แล้ว
+  ต้องเปลี่ยนลิงก์เป็น `/forgot-password` และทำหน้าใหม่ 2 หน้า (ยังไม่ได้แตก task)
 - การตัดสินใจตาม Gap ในไฟล์ task: ลิงก์ "ลืมรหัสผ่าน?" พาไปหน้า `/contact` (ไม่มี endpoint จริงให้เชื่อม), checkbox "จดจำฉัน" ยังไม่ผูก logic (token เก็บ `localStorage` เสมอเหมือนเดิม), หลัง login/register สำเร็จ redirect กลับหน้าแรกเสมอ (ยังไม่ทำ "จำหน้าที่มาจาก")

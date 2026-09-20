@@ -191,7 +191,7 @@ func TestAC21_BadRequest_400(t *testing.T) {
 		{"body พาร์สไม่ได้", request{http.MethodPost, "/api/v1/auth/register", `{"email":`, ""}},
 		{"ชนิดข้อมูลผิด", request{http.MethodPost, "/api/v1/auth/register",
 			`{"email":123,"password":"Passw0rd123","first_name":"ก","last_name":"ข","phone":"0800000001"}`, ""}},
-		{"branch_id ไม่ใช่ UUID", request{http.MethodGet, "/api/v1/room-types?branch_id=ไม่ใช่-uuid", "", ""}},
+		{"branch_id ไม่ใช่จำนวนเต็มบวก", request{http.MethodGet, "/api/v1/room-types?branch_id=ไม่ใช่ตัวเลข", "", ""}},
 		{"page ไม่ใช่ตัวเลข", request{http.MethodGet, "/api/v1/rooms/search?page=abc", "", ""}},
 		{"content type ไม่ใช่ JSON", request{http.MethodPost, "/api/v1/auth/register", "ข้อความธรรมดา", ""}},
 	}
@@ -348,7 +348,7 @@ func TestAC21_EveryErrorUsesEnvelope(t *testing.T) {
 		{http.MethodGet, "/api/v1/admin/bookings", "", memberToken},
 		{http.MethodGet, "/api/v1/ไม่มีเส้นทางนี้", "", ""},
 		{http.MethodDelete, "/api/v1/auth/login", "", ""},
-		{http.MethodGet, "/api/v1/room-types?branch_id=ไม่ใช่-uuid", "", ""},
+		{http.MethodGet, "/api/v1/room-types?branch_id=ไม่ใช่ตัวเลข", "", ""},
 	}
 
 	for _, r := range reqs {

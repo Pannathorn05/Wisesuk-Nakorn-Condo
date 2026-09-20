@@ -20,6 +20,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/config"
 	"backend/internal/database"
+	"backend/internal/shared/types"
 )
 
 func main() {
@@ -139,9 +140,9 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 		},
 	}
 
-	branchIDs := make([]string, 0, len(branches))
+	branchIDs := make([]types.BranchID, 0, len(branches))
 	for _, b := range branches {
-		var id string
+		var id types.BranchID
 		var dailyFrom any
 		if b.dailyFrom > 0 {
 			dailyFrom = b.dailyFrom
@@ -362,6 +363,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 		{"admin.2@wisetsuk.com", "ศิริพร", "แสงทอง"},
 		{"admin.3@wisetsuk.com", "สมหญิง", "งานดี"},
 	}
+	// หนึ่งสาขามีผู้ดูแลคนเดียว — adminSeeds จึงจับคู่กับ branchIDs ทีละคู่ตามลำดับ
 	for i, a := range adminSeeds {
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO users (email, password_hash, first_name, last_name, role, branch_id)

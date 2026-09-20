@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
 	"backend/internal/shared/types"
 )
@@ -51,9 +49,9 @@ func scan(row interface{ Scan(...any) error }) (*Booking, error) {
 }
 
 type CreateParams struct {
-	UserID   uuid.UUID
-	BranchID uuid.UUID
-	RoomID   uuid.UUID
+	UserID   types.UserID
+	BranchID types.BranchID
+	RoomID   types.RoomID
 	StayType types.StayType
 
 	GuestFirstName    string
@@ -82,7 +80,7 @@ func (r *Repository) Create(ctx context.Context, p CreateParams) (*Booking, erro
 			'PT-' || LPAD(nextval('booking_code_seq')::text, 3, '0'),
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id`
-	var id uuid.UUID
+	var id types.BookingID
 	err := r.db.Executor(ctx).QueryRow(ctx, q,
 		p.UserID, p.BranchID, p.RoomID, p.StayType,
 		p.GuestFirstName, p.GuestLastName, p.GuestPhone, p.EmergencyPhone, p.EmergencyRelation,
@@ -94,7 +92,7 @@ func (r *Repository) Create(ctx context.Context, p CreateParams) (*Booking, erro
 	return r.GetByID(ctx, id)
 }
 
-func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*Booking, error) {
+func (r *Repository) GetByID(ctx context.Context, id types.BookingID) (*Booking, error) {
 	q := `SELECT ` + columns + joins + ` WHERE bk.id = $1`
 	return scan(r.db.Executor(ctx).QueryRow(ctx, q, id))
 }
@@ -102,8 +100,8 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*Booking, error
 // ListParams รองรับตัวกรองของทั้งหน้า "ประวัติการจอง" (สมาชิก)
 // และหน้า "จัดการการจอง" (แอดมิน: ทั้งหมด / รอตรวจสอบ / อนุมัติแล้ว / ปฏิเสธ, รายวัน / รายเดือน)
 type ListParams struct {
-	UserID   *uuid.UUID
-	BranchID *uuid.UUID
+	UserID   *types.UserID
+	BranchID *types.BranchID
 	Status   *BookingStatus
 	StayType *types.StayType
 	Search   string
@@ -161,7 +159,7 @@ func (r *Repository) List(ctx context.Context, p ListParams) ([]Booking, int, er
 
 // UpdateStatus เปลี่ยนสถานะการจอง โดยยืนยัน branch_id เพื่อกันแอดมินข้ามสาขา
 // branchID = nil หมายถึงข้ามการตรวจ (super admin หรือเจ้าของการจองเอง)
-func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, branchID *uuid.UUID, status BookingStatus, reviewerID *uuid.UUID) (*Booking, error) {
+func (r *Repository) UpdateStatus(ctx context.Context, id types.BookingID, branchID *types.BranchID, status BookingStatus, reviewerID *types.UserID) (*Booking, error) {
 	// $3 ต้อง cast เป็น booking_status ให้ชัดทุกจุด เพราะถูกใช้ทั้งเป็นค่าที่กำหนดให้คอลัมน์
 	// และเป็นค่าที่นำไปเปรียบเทียบ ถ้าไม่ cast PostgreSQL จะสรุปชนิดไม่ตรงกัน
 	// แล้วตอบ "inconsistent types deduced for parameter $3" (SQLSTATE 42P08)
@@ -169,11 +167,11 @@ func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, branchID *u
 		UPDATE bookings SET
 			status       = $3::booking_status,
 			reviewed_by  = COALESCE($4, reviewed_by),
-			reviewed_at  = CASE WHEN $4::uuid IS NULL THEN reviewed_at ELSE now() END,
+			reviewed_at  = CASE WHEN $4::bigint IS NULL THEN reviewed_at ELSE now() END,
 			cancelled_at = CASE WHEN $3::booking_status = 'cancelled' THEN now() ELSE cancelled_at END,
 			updated_at   = now()
 		WHERE id = $1
-		  AND ($2::uuid IS NULL OR branch_id = $2)`
+		  AND ($2::bigint IS NULL OR branch_id = $2)`
 	tag, err := r.db.Executor(ctx).Exec(ctx, q, id, branchID, status, reviewerID)
 	if err != nil {
 		return nil, err
@@ -185,7 +183,7 @@ func (r *Repository) UpdateStatus(ctx context.Context, id uuid.UUID, branchID *u
 }
 
 // SetAppointment กำหนด/แก้ไขวันนัดหมายทำสัญญา (เฉพาะการจองรายเดือน)
-func (r *Repository) SetAppointment(ctx context.Context, id, branchID uuid.UUID, at time.Time, note string) (*Booking, error) {
+func (r *Repository) SetAppointment(ctx context.Context, id types.BookingID, branchID types.BranchID, at time.Time, note string) (*Booking, error) {
 	const q = `
 		UPDATE bookings SET appointment_at = $3, appointment_note = $4, updated_at = now()
 		WHERE id = $1 AND branch_id = $2 AND stay_type = 'monthly'`
@@ -200,9 +198,9 @@ func (r *Repository) SetAppointment(ctx context.Context, id, branchID uuid.UUID,
 }
 
 // RecentByBranch ใช้ในการ์ด "กิจกรรมล่าสุด" บนแดชบอร์ด
-func (r *Repository) RecentByBranch(ctx context.Context, branchID *uuid.UUID, limit int) ([]Booking, error) {
+func (r *Repository) RecentByBranch(ctx context.Context, branchID *types.BranchID, limit int) ([]Booking, error) {
 	q := `SELECT ` + columns + joins + `
-	      WHERE ($1::uuid IS NULL OR bk.branch_id = $1)
+	      WHERE ($1::bigint IS NULL OR bk.branch_id = $1)
 	      ORDER BY bk.created_at DESC LIMIT $2`
 	rows, err := r.db.Executor(ctx).Query(ctx, q, branchID, limit)
 	if err != nil {
@@ -252,7 +250,7 @@ func scanPayment(row interface{ Scan(...any) error }) (*Payment, error) {
 }
 
 type CreatePaymentParams struct {
-	BookingID     uuid.UUID
+	BookingID     types.BookingID
 	Amount        float64
 	TransferredAt time.Time
 	SlipURL       string
@@ -268,14 +266,14 @@ func (r *Repository) CreatePayment(ctx context.Context, p CreatePaymentParams) (
 }
 
 // LatestPayment คืนสลิปล่าสุด (ปุ่ม "ดูสลิป" ในหน้าจัดการการจอง)
-func (r *Repository) LatestPayment(ctx context.Context, bookingID uuid.UUID) (*Payment, error) {
+func (r *Repository) LatestPayment(ctx context.Context, bookingID types.BookingID) (*Payment, error) {
 	q := `SELECT ` + paymentColumns + ` FROM payments
 	      WHERE booking_id = $1 ORDER BY created_at DESC LIMIT 1`
 	return scanPayment(r.db.Executor(ctx).QueryRow(ctx, q, bookingID))
 }
 
 // ReviewPayment บันทึกผลตรวจสอบสลิปของแอดมิน
-func (r *Repository) ReviewPayment(ctx context.Context, bookingID, reviewerID uuid.UUID, status PaymentStatus, reason string) error {
+func (r *Repository) ReviewPayment(ctx context.Context, bookingID types.BookingID, reviewerID types.UserID, status PaymentStatus, reason string) error {
 	const q = `
 		UPDATE payments SET
 			status = $3, reviewed_by = $2, reviewed_at = now(), reject_reason = $4

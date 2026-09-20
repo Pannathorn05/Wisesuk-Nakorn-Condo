@@ -3,9 +3,8 @@ package branch
 import (
 	"context"
 
-	"github.com/google/uuid"
-
 	"backend/internal/database"
+	"backend/internal/shared/types"
 )
 
 type Repository struct{ db *database.TxManager }
@@ -53,7 +52,7 @@ func (r *Repository) List(ctx context.Context, includeInactive bool) ([]Branch, 
 	return out, rows.Err()
 }
 
-func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*Branch, error) {
+func (r *Repository) GetByID(ctx context.Context, id types.BranchID) (*Branch, error) {
 	q := `SELECT ` + columns + ` FROM branches WHERE id = $1`
 	return scan(r.db.Executor(ctx).QueryRow(ctx, q, id))
 }
@@ -63,7 +62,7 @@ func (r *Repository) GetBySlug(ctx context.Context, slug string) (*Branch, error
 	return scan(r.db.Executor(ctx).QueryRow(ctx, q, slug))
 }
 
-func (r *Repository) Exists(ctx context.Context, id uuid.UUID) (bool, error) {
+func (r *Repository) Exists(ctx context.Context, id types.BranchID) (bool, error) {
 	var exists bool
 	err := r.db.Executor(ctx).QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM branches WHERE id = $1)`, id).Scan(&exists)
@@ -94,7 +93,7 @@ type UpdateParams struct {
 	CoverImageURL   *string
 }
 
-func (r *Repository) Update(ctx context.Context, id uuid.UUID, p UpdateParams) error {
+func (r *Repository) Update(ctx context.Context, id types.BranchID, p UpdateParams) error {
 	const q = `
 		UPDATE branches SET
 			name = $2, tagline = $3, description = $4, address = $5, phones = $6,
@@ -125,7 +124,7 @@ func (r *Repository) Update(ctx context.Context, id uuid.UUID, p UpdateParams) e
 // ---------------------------------------------------------------- images
 
 // UpdateCoverImage แยกจาก Update เพราะการเปลี่ยนรูปปกไม่ควรบังคับให้ส่งรายละเอียดสาขามาครบทั้งชุด
-func (r *Repository) UpdateCoverImage(ctx context.Context, id uuid.UUID, url string) error {
+func (r *Repository) UpdateCoverImage(ctx context.Context, id types.BranchID, url string) error {
 	tag, err := r.db.Executor(ctx).Exec(ctx,
 		`UPDATE branches SET cover_image_url = $2, updated_at = now() WHERE id = $1`, id, url)
 	if err != nil {
@@ -137,7 +136,7 @@ func (r *Repository) UpdateCoverImage(ctx context.Context, id uuid.UUID, url str
 	return nil
 }
 
-func (r *Repository) ListImages(ctx context.Context, branchID uuid.UUID) ([]BranchImage, error) {
+func (r *Repository) ListImages(ctx context.Context, branchID types.BranchID) ([]BranchImage, error) {
 	rows, err := r.db.Executor(ctx).Query(ctx,
 		`SELECT id, branch_id, image_url, caption, sort_order
 		 FROM branch_images WHERE branch_id = $1 ORDER BY sort_order, created_at`, branchID)
@@ -157,7 +156,7 @@ func (r *Repository) ListImages(ctx context.Context, branchID uuid.UUID) ([]Bran
 	return out, rows.Err()
 }
 
-func (r *Repository) AddImage(ctx context.Context, branchID uuid.UUID, url, caption string, sortOrder int) (*BranchImage, error) {
+func (r *Repository) AddImage(ctx context.Context, branchID types.BranchID, url, caption string, sortOrder int) (*BranchImage, error) {
 	var img BranchImage
 	err := r.db.Executor(ctx).QueryRow(ctx,
 		`INSERT INTO branch_images (branch_id, image_url, caption, sort_order)
@@ -172,7 +171,7 @@ func (r *Repository) AddImage(ctx context.Context, branchID uuid.UUID, url, capt
 }
 
 // DeleteImage จำกัดด้วย branch_id เพื่อกันแอดมินสาขาหนึ่งลบรูปของอีกสาขา
-func (r *Repository) DeleteImage(ctx context.Context, branchID, imageID uuid.UUID) error {
+func (r *Repository) DeleteImage(ctx context.Context, branchID types.BranchID, imageID types.BranchImageID) error {
 	tag, err := r.db.Executor(ctx).Exec(ctx,
 		`DELETE FROM branch_images WHERE id = $1 AND branch_id = $2`, imageID, branchID)
 	if err != nil {
@@ -196,7 +195,7 @@ func (r *Repository) ListAllAmenities(ctx context.Context) ([]Amenity, error) {
 	return collectAmenities(rows)
 }
 
-func (r *Repository) ListAmenities(ctx context.Context, branchID uuid.UUID) ([]Amenity, error) {
+func (r *Repository) ListAmenities(ctx context.Context, branchID types.BranchID) ([]Amenity, error) {
 	rows, err := r.db.Executor(ctx).Query(ctx,
 		`SELECT a.id, a.code, a.name, a.icon, a.sort_order
 		 FROM amenities a
@@ -211,7 +210,7 @@ func (r *Repository) ListAmenities(ctx context.Context, branchID uuid.UUID) ([]A
 }
 
 // SetAmenities แทนที่รายการสิ่งอำนวยความสะดวกของสาขาทั้งชุด
-func (r *Repository) SetAmenities(ctx context.Context, branchID uuid.UUID, amenityIDs []uuid.UUID) error {
+func (r *Repository) SetAmenities(ctx context.Context, branchID types.BranchID, amenityIDs []types.AmenityID) error {
 	exec := r.db.Executor(ctx)
 	if _, err := exec.Exec(ctx, `DELETE FROM branch_amenities WHERE branch_id = $1`, branchID); err != nil {
 		return err
@@ -220,7 +219,7 @@ func (r *Repository) SetAmenities(ctx context.Context, branchID uuid.UUID, ameni
 		return nil
 	}
 	_, err := exec.Exec(ctx,
-		`INSERT INTO branch_amenities (branch_id, amenity_id) SELECT $1, unnest($2::uuid[])`,
+		`INSERT INTO branch_amenities (branch_id, amenity_id) SELECT $1, unnest($2::bigint[])`,
 		branchID, amenityIDs)
 	return err
 }
@@ -243,7 +242,7 @@ func collectAmenities(rows interface {
 
 // ---------------------------------------------------------------- nearby places
 
-func (r *Repository) ListNearby(ctx context.Context, branchID uuid.UUID) ([]NearbyPlace, error) {
+func (r *Repository) ListNearby(ctx context.Context, branchID types.BranchID) ([]NearbyPlace, error) {
 	rows, err := r.db.Executor(ctx).Query(ctx,
 		`SELECT id, branch_id, category, name, distance, sort_order
 		 FROM nearby_places WHERE branch_id = $1 ORDER BY category, sort_order`, branchID)
@@ -271,7 +270,7 @@ type NearbyInput struct {
 }
 
 // ReplaceNearby เขียนทับรายการสถานที่ใกล้เคียงทั้งชุด (ตรงกับ UI ที่แก้ทีละกลุ่ม)
-func (r *Repository) ReplaceNearby(ctx context.Context, branchID uuid.UUID, items []NearbyInput) error {
+func (r *Repository) ReplaceNearby(ctx context.Context, branchID types.BranchID, items []NearbyInput) error {
 	exec := r.db.Executor(ctx)
 	if _, err := exec.Exec(ctx, `DELETE FROM nearby_places WHERE branch_id = $1`, branchID); err != nil {
 		return err
