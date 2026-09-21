@@ -83,6 +83,12 @@ func IsUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// IsForeignKeyViolation บอกว่า error เกิดจากการอ้างถึงแถวที่ไม่มีอยู่จริงหรือไม่
+func IsForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
 // Itoa แปลง int เป็น string ใช้สร้าง placeholder ($1, $2, ...) ตอนประกอบ query แบบไดนามิก
 func Itoa(n int) string {
 	if n == 0 {

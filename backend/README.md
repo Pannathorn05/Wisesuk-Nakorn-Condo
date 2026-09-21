@@ -219,7 +219,7 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 | GET | `/amenities` | รายการสิ่งอำนวยความสะดวกทั้งหมด |
 | GET | `/room-types?branch_id=` | ประเภทห้องพัก |
 | GET | `/rooms/search` | ค้นหาห้องพัก (ดูตัวกรองด้านล่าง) |
-| GET | `/rooms/{id}` | รายละเอียดห้อง |
+| GET | `/rooms/{id}` | รายละเอียดห้อง + สิ่งอำนวยความสะดวกของห้อง |
 
 ตัวกรองของ `/rooms/search`: `branch_id`, `room_type_id`, `stay_type` (`daily`/`monthly`),
 `check_in`, `check_out`, `move_in_date` (รูปแบบ `YYYY-MM-DD`), `min_price`, `max_price`, `page`, `page_size`
@@ -261,8 +261,8 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 | POST | `/admin/bookings/{id}/reject` | ปฏิเสธ (ต้องระบุ `reason`) |
 | PUT | `/admin/bookings/{id}/appointment` | กำหนดวันนัดหมายทำสัญญา (รายเดือน) |
 | GET | `/admin/rooms` | รายการห้องทุกสถานะ |
-| POST | `/admin/rooms` | เพิ่มห้องพัก |
-| PUT | `/admin/rooms/{id}` | แก้ไขห้องพัก |
+| POST | `/admin/rooms` | เพิ่มห้องพัก (ระบุ `amenity_ids` ได้) |
+| PUT | `/admin/rooms/{id}` | แก้ไขห้องพัก (`amenity_ids` แทนที่ของเดิมทั้งชุด) |
 | PATCH | `/admin/rooms/{id}/status` | อัปเดตสถานะห้องแบบ real-time |
 | DELETE | `/admin/rooms/{id}` | ลบห้อง (soft delete เพื่อรักษาประวัติการจอง) |
 | PUT | `/admin/branch` | แก้ไขรายละเอียดสาขา |

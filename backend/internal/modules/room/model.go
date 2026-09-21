@@ -34,6 +34,16 @@ type RoomType struct {
 	SortOrder   int              `json:"sort_order"`
 }
 
+// Amenity คือสิ่งอำนวยความสะดวกของห้อง เช่น แอร์ ห้องน้ำในตัว คีย์การ์ด
+// นิยามซ้ำกับ module branch โดยตั้งใจ เพื่อให้ room ไม่ต้อง import branch
+type Amenity struct {
+	ID        types.AmenityID `json:"id"`
+	Code      string          `json:"code"`
+	Name      string          `json:"name"`
+	Icon      string          `json:"icon"`
+	SortOrder int             `json:"sort_order"`
+}
+
 type Room struct {
 	ID           types.RoomID      `json:"id"`
 	BranchID     types.BranchID    `json:"branch_id"`
@@ -52,6 +62,7 @@ type Room struct {
 	ImageURL     string            `json:"image_url"`
 	Status       RoomStatus        `json:"status"`
 	IsActive     bool              `json:"is_active"`
+	Amenities    []Amenity         `json:"amenities,omitempty"` // เติมเฉพาะตอนดึงห้องรายตัว
 	CreatedAt    time.Time         `json:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at"`
 }

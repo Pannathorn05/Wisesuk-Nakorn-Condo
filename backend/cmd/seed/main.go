@@ -165,6 +165,9 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 		{"aircon", "เครื่องปรับอากาศ", "wind"},
 		{"parking", "ที่จอดรถ", "car"},
 		{"furniture", "เฟอร์นิเจอร์ - ตู้, เตียง", "sofa"},
+		{"private-bathroom", "ห้องน้ำในตัว", "bath"},
+		{"bed", "เตียง", "bed"},
+		{"desk", "โต๊ะ", "table"},
 		{"motorcycle-parking", "ที่จอดรถมอเตอร์ไซด์/จักรยาน", "bike"},
 		{"water-heater", "เครื่องทำน้ำอุ่น", "shower"},
 		{"fridge", "ตู้เย็น", "refrigerator"},
@@ -323,33 +326,101 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 		}
 	}
 
-	// ห้องตัวอย่างของสาขาประชาอุทิศ 45 ตามเลขห้องที่ปรากฏใน prototype
-	sampleRooms := []struct {
+	// ห้องพักรายสาขา (ตามลำดับใน branches) — ราคาอยู่ในช่วง monthly_price_min..max ของสาขานั้น
+	// typeName ว่าง = ไม่ระบุประเภทห้อง (room_type_id เป็น NULL)
+	type roomSeed struct {
 		number, building string
 		floor            int
 		stayType         string
 		price            float64
 		sizeSqm          float64
 		typeName         string
-	}{
-		{"201", "1", 2, "daily", 500, 21, "ห้องแอร์"},
-		{"210", "1", 2, "daily", 500, 21, "ห้องแอร์"},
-		{"302", "1", 3, "monthly", 2900, 21, "ห้องแอร์"},
-		{"409", "2", 4, "monthly", 3200, 21, "ห้องแอร์"},
-		{"502", "2", 5, "daily", 500, 21, "ห้องพัดลม"},
-		{"511", "2", 5, "monthly", 2900, 21, "ห้องเปล่า"},
+		amenities        []string
 	}
-	for _, rm := range sampleRooms {
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO rooms (branch_id, room_type_id, room_number, building, floor,
-			                    stay_type, price, water_rate, electric_rate, size_sqm)
-			 VALUES ($1,
-			         (SELECT id FROM room_types WHERE branch_id = $1 AND name = $2),
-			         $3, $4, $5, $6, $7, 17, 7, $8)
-			 ON CONFLICT (branch_id, room_number) DO NOTHING`,
-			branchIDs[0], rm.typeName, rm.number, rm.building, rm.floor,
-			rm.stayType, rm.price, rm.sizeSqm); err != nil {
-			return fmt.Errorf("ห้อง %s: %w", rm.number, err)
+	roomsByBranch := map[int][]roomSeed{
+		// ประชาอุทิศ 45 — รายวัน 1 ห้อง รายเดือน 3 ห้อง
+		0: {
+			{"201", "1", 2, "daily", 500, 21, "ห้องแอร์",
+				[]string{"aircon", "private-bathroom", "bed", "fridge", "keycard"}},
+			{"302", "1", 3, "monthly", 3400, 21, "ห้องแอร์",
+				[]string{"aircon", "private-bathroom", "bed", "desk", "keycard"}},
+			{"409", "2", 4, "monthly", 2900, 21, "ห้องเปล่า",
+				[]string{"aircon", "private-bathroom", "keycard"}},
+			{"511", "2", 5, "monthly", 2200, 21, "ห้องเปล่า",
+				[]string{"private-bathroom", "keycard"}},
+		},
+		// บางแค — รายเดือนทั้งหมด สาขานี้ไม่รับรายวัน (daily_price_from เป็น NULL)
+		1: {
+			{"301", "1", 3, "monthly", 3500, 30, "",
+				[]string{"furniture", "keycard", "lift"}},
+			{"302", "1", 3, "monthly", 4000, 30, "",
+				[]string{"furniture", "keycard", "lift"}},
+			{"303", "1", 3, "monthly", 4500, 46, "",
+				[]string{"furniture", "keycard", "lift"}},
+		},
+		// เจริญกรุงเพลส — รายวัน 1 ห้อง รายเดือน 1 ห้อง ยังไม่ระบุขนาดห้อง
+		2: {
+			{"201", "1", 2, "daily", 950, 0, "ห้องแอร์",
+				[]string{"aircon", "private-bathroom", "bed", "fridge", "keycard"}},
+			{"301", "1", 3, "monthly", 7700, 0, "ห้องแอร์",
+				[]string{"aircon", "private-bathroom", "furniture", "keycard"}},
+		},
+	}
+
+	// ห้องตัวอย่างชุดเก่าที่ไม่ได้ใช้แล้ว — ลบเฉพาะห้องที่ยังไม่มีใครจอง
+	// ห้องที่มีใบจองอ้างอยู่ปล่อยไว้ตามเดิม เพราะ bookings.room_id เป็น ON DELETE RESTRICT
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM rooms
+		 WHERE branch_id = $1 AND room_number = ANY($2)
+		   AND NOT EXISTS (SELECT 1 FROM bookings WHERE room_id = rooms.id)`,
+		branchIDs[0], []string{"210", "502"}); err != nil {
+		return fmt.Errorf("ลบห้องตัวอย่างชุดเก่า: %w", err)
+	}
+
+	for idx, rooms := range roomsByBranch {
+		for _, rm := range rooms {
+			// 0 = ยังไม่รู้ขนาดห้อง ต้องลงเป็น NULL ไม่ใช่ 0.00 ซึ่งแปลว่า "ห้องกว้างศูนย์"
+			var sizeSqm any
+			if rm.sizeSqm > 0 {
+				sizeSqm = rm.sizeSqm
+			}
+
+			// DO UPDATE เหมือนสาขาข้างบน เพื่อให้รัน seed ซ้ำแล้วได้ห้องตรงตามรายการนี้เสมอ
+			// ไม่แตะ status กับ image_url เพราะเป็นของที่แอดมินดูแลเองระหว่างใช้งานจริง
+			var roomID int64
+			if err := tx.QueryRow(ctx,
+				`INSERT INTO rooms (branch_id, room_type_id, room_number, building, floor,
+				                    stay_type, price, water_rate, electric_rate, size_sqm)
+				 VALUES ($1,
+				         (SELECT id FROM room_types WHERE branch_id = $1 AND name = $2),
+				         $3, $4, $5, $6, $7, $8, $9, $10)
+				 ON CONFLICT (branch_id, room_number) DO UPDATE SET
+				 	room_type_id  = EXCLUDED.room_type_id,
+				 	building      = EXCLUDED.building,
+				 	floor         = EXCLUDED.floor,
+				 	stay_type     = EXCLUDED.stay_type,
+				 	price         = EXCLUDED.price,
+				 	water_rate    = EXCLUDED.water_rate,
+				 	electric_rate = EXCLUDED.electric_rate,
+				 	size_sqm      = EXCLUDED.size_sqm,
+				 	updated_at    = now()
+				 RETURNING id`,
+				branchIDs[idx], rm.typeName, rm.number, rm.building, rm.floor,
+				rm.stayType, rm.price, branches[idx].water, branches[idx].electric, sizeSqm).Scan(&roomID); err != nil {
+				return fmt.Errorf("ห้อง %s สาขา %s: %w", rm.number, branches[idx].slug, err)
+			}
+
+			// ล้างก่อนผูกใหม่ เพื่อให้ผลลัพธ์ตรงกับรายการข้างบนเสมอแม้รัน seed ซ้ำ
+			if _, err := tx.Exec(ctx,
+				`DELETE FROM room_amenities WHERE room_id = $1`, roomID); err != nil {
+				return fmt.Errorf("ล้างสิ่งอำนวยความสะดวกห้อง %s: %w", rm.number, err)
+			}
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO room_amenities (room_id, amenity_id)
+				 SELECT $1, id FROM amenities WHERE code = ANY($2)`,
+				roomID, rm.amenities); err != nil {
+				return fmt.Errorf("ผูกสิ่งอำนวยความสะดวกห้อง %s: %w", rm.number, err)
+			}
 		}
 	}
 

@@ -18,7 +18,7 @@ type Module struct {
 
 func New(db *database.TxManager, rec *audit.Recorder, files *storage.DBStore) *Module {
 	repo := NewRepository(db)
-	svc := NewService(repo, rec)
+	svc := NewService(repo, db, rec)
 	return &Module{Repo: repo, Service: svc, Handler: NewHandler(svc, files)}
 }
 

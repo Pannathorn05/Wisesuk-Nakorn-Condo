@@ -2105,6 +2105,11 @@ components:
         description:
           type: string
           nullable: true
+        amenities:
+          type: array
+          description: สิ่งอำนวยความสะดวกของห้องนี้ คืนเฉพาะ GET /rooms/{id} เท่านั้น
+          items:
+            $ref: '#/components/schemas/Amenity'
         created_at:
           type: string
           format: date-time
@@ -2138,6 +2143,12 @@ components:
         description:
           type: string
           nullable: true
+        amenity_ids:
+          type: array
+          description: รายการสิ่งอำนวยความสะดวกของห้อง ส่งมาแทนที่ของเดิมทั้งชุด
+          items:
+            type: string
+            pattern: "^amt-[0-9]+$"
 
     UpdateRoomRequest:
       type: object
@@ -2161,6 +2172,12 @@ components:
         description:
           type: string
           nullable: true
+        amenity_ids:
+          type: array
+          description: รายการสิ่งอำนวยความสะดวกของห้อง ส่งมาแทนที่ของเดิมทั้งชุด
+          items:
+            type: string
+            pattern: "^amt-[0-9]+$"
 
     CreateBookingRequest:
       type: object

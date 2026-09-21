@@ -15,11 +15,12 @@ import (
 
 type Service struct {
 	repo  *Repository
+	tx    *database.TxManager
 	audit *audit.Recorder
 }
 
-func NewService(repo *Repository, rec *audit.Recorder) *Service {
-	return &Service{repo: repo, audit: rec}
+func NewService(repo *Repository, tx *database.TxManager, rec *audit.Recorder) *Service {
+	return &Service{repo: repo, tx: tx, audit: rec}
 }
 
 type SearchInput struct {
@@ -55,9 +56,18 @@ func (s *Service) Search(ctx context.Context, in SearchInput) ([]Room, int, erro
 	return rooms, total, access.MapErr(err)
 }
 
+// Get คือหน้ารายละเอียดห้อง — เป็นที่เดียวที่คืนสิ่งอำนวยความสะดวกของห้องมาด้วย
 func (s *Service) Get(ctx context.Context, id types.RoomID) (*Room, error) {
 	rm, err := s.repo.GetByID(ctx, id)
-	return rm, access.MapErr(err)
+	if err != nil {
+		return nil, access.MapErr(err)
+	}
+	amenities, err := s.repo.ListAmenities(ctx, id)
+	if err != nil {
+		return nil, access.MapErr(err)
+	}
+	rm.Amenities = amenities
+	return rm, nil
 }
 
 func (s *Service) ListTypes(ctx context.Context, branchID *types.BranchID) ([]RoomType, error) {
@@ -127,6 +137,8 @@ type SaveInput struct {
 	Description  string            `json:"description"`
 	ImageURL     *string           `json:"image_url"`
 	Status       string            `json:"status"`
+	// nil = ไม่แตะสิ่งอำนวยความสะดวกเดิม, [] = ล้างทิ้งทั้งหมด
+	AmenityIDs *[]types.AmenityID `json:"amenity_ids"`
 }
 
 func (in SaveInput) validated() (SaveParams, error) {
@@ -162,6 +174,7 @@ func (in SaveInput) validated() (SaveParams, error) {
 		RoomTypeID: in.RoomTypeID, RoomNumber: roomNumber, Building: building, Floor: in.Floor,
 		StayType: stayType, Price: in.Price, WaterRate: in.WaterRate, ElectricRate: in.ElectricRate,
 		SizeSqm: in.SizeSqm, Description: in.Description, ImageURL: in.ImageURL, Status: status,
+		AmenityIDs: in.AmenityIDs,
 	}, nil
 }
 
@@ -180,7 +193,16 @@ func (s *Service) Create(ctx context.Context, identity middleware.Identity, in S
 	}
 	params.BranchID = branchID
 
-	rm, err := s.repo.Create(ctx, params)
+	var rm *Room
+	// ห้องกับสิ่งอำนวยความสะดวกต้องลงพร้อมกัน ถ้าผูก amenity พลาดก็ต้องไม่เหลือห้องค้างไว้
+	err = s.tx.WithTx(ctx, func(ctx context.Context) error {
+		created, err := s.repo.Create(ctx, params)
+		if err != nil {
+			return err
+		}
+		rm = created
+		return s.saveAmenities(ctx, created.ID, params.AmenityIDs)
+	})
 	if err != nil {
 		if database.IsUniqueViolation(err) {
 			return nil, errDuplicateRoom
@@ -204,7 +226,15 @@ func (s *Service) Update(ctx context.Context, identity middleware.Identity, room
 	}
 	params.BranchID = branchID
 
-	rm, err := s.repo.Update(ctx, roomID, branchID, params)
+	var rm *Room
+	err = s.tx.WithTx(ctx, func(ctx context.Context) error {
+		updated, err := s.repo.Update(ctx, roomID, branchID, params)
+		if err != nil {
+			return err
+		}
+		rm = updated
+		return s.saveAmenities(ctx, roomID, params.AmenityIDs)
+	})
 	if err != nil {
 		if database.IsUniqueViolation(err) {
 			return nil, errDuplicateRoom
@@ -274,6 +304,21 @@ func (s *Service) Delete(ctx context.Context, identity middleware.Identity, room
 	}
 	s.record(ctx, identity, branchID, "room.delete", roomID.String(), nil, ip)
 	return nil
+}
+
+// saveAmenities แทนที่สิ่งอำนวยความสะดวกของห้องทั้งชุด
+// ids เป็น nil แปลว่าคำขอไม่ได้พูดถึงเรื่องนี้ จึงไม่แตะของเดิม
+func (s *Service) saveAmenities(ctx context.Context, roomID types.RoomID, ids *[]types.AmenityID) error {
+	if ids == nil {
+		return nil
+	}
+	err := s.repo.SetAmenities(ctx, roomID, *ids)
+	if database.IsForeignKeyViolation(err) {
+		return httpx.ValidationFailed(map[string]string{
+			"amenity_ids": "มีสิ่งอำนวยความสะดวกที่ไม่มีอยู่ในระบบ",
+		})
+	}
+	return err
 }
 
 // branchOf คืนสาขาของห้อง หลังยืนยันแล้วว่าผู้เรียกมีสิทธิ์กับสาขานั้น

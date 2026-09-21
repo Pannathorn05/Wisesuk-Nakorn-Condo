@@ -135,6 +135,49 @@ func (r *Repository) GetByID(ctx context.Context, id types.RoomID) (*Room, error
 	return scan(r.db.Executor(ctx).QueryRow(ctx, q, id))
 }
 
+// ---------------------------------------------------------------- room amenities
+
+func (r *Repository) ListAmenities(ctx context.Context, roomID types.RoomID) ([]Amenity, error) {
+	rows, err := r.db.Executor(ctx).Query(ctx,
+		`SELECT a.id, a.code, a.name, a.icon, a.sort_order
+		 FROM amenities a
+		 JOIN room_amenities ra ON ra.amenity_id = a.id
+		 WHERE ra.room_id = $1
+		 ORDER BY a.sort_order, a.name`, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Amenity{}
+	for rows.Next() {
+		var a Amenity
+		if err := rows.Scan(&a.ID, &a.Code, &a.Name, &a.Icon, &a.SortOrder); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// SetAmenities แทนที่สิ่งอำนวยความสะดวกของห้องทั้งชุด
+// ส่ง amenityIDs ว่างมา = ล้างทิ้งทั้งหมด
+func (r *Repository) SetAmenities(ctx context.Context, roomID types.RoomID, amenityIDs []types.AmenityID) error {
+	exec := r.db.Executor(ctx)
+	if _, err := exec.Exec(ctx, `DELETE FROM room_amenities WHERE room_id = $1`, roomID); err != nil {
+		return err
+	}
+	if len(amenityIDs) == 0 {
+		return nil
+	}
+	// DISTINCT กัน amenity_id ซ้ำในคำขอไปชน primary key ของ room_amenities
+	// ซึ่งจะถูกตีความผิดเป็น "เลขห้องซ้ำ" ที่ชั้น service
+	_, err := exec.Exec(ctx,
+		`INSERT INTO room_amenities (room_id, amenity_id) SELECT DISTINCT $1::bigint, unnest($2::bigint[])`,
+		roomID, amenityIDs)
+	return err
+}
+
 // Lock ล็อกแถวห้อง (SELECT ... FOR UPDATE) ต้องเรียกภายใน transaction
 // คำขอจองที่เข้ามาพร้อมกันจะรอที่บรรทัดนี้ ทำให้ตรวจความว่างได้ถูกต้อง
 func (r *Repository) Lock(ctx context.Context, roomID types.RoomID) (*Room, error) {
@@ -181,6 +224,7 @@ type SaveParams struct {
 	Description  string
 	ImageURL     *string
 	Status       RoomStatus
+	AmenityIDs   *[]types.AmenityID
 }
 
 func (r *Repository) Create(ctx context.Context, p SaveParams) (*Room, error) {
