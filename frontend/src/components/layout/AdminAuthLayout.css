@@ -1,0 +1,5 @@
+/* .auth-page (AuthCard.css) เผื่อความสูง footer ไว้ 260px เพราะฝั่ง Guest มี footer เสมอ
+   แต่โซนผู้ดูแลไม่มี footer — ถ้าไม่ override การ์ดจะลอยสูงกว่ากึ่งกลางจอ */
+.admin-auth-layout .auth-page {
+  min-height: calc(100vh - var(--header-height));
+}

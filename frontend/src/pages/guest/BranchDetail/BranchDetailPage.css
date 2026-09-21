@@ -12,7 +12,7 @@
   color: var(--color-text-muted);
   padding: 2px var(--space-3);
   border-radius: 999px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
@@ -22,7 +22,7 @@
   gap: var(--space-2);
   margin-top: var(--space-2);
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
 }
 
 .branch-detail-page__address svg {
@@ -43,7 +43,7 @@
   color: var(--color-text);
   padding: var(--space-2) var(--space-5);
   border-radius: 999px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   font-weight: 600;
   cursor: pointer;
 }

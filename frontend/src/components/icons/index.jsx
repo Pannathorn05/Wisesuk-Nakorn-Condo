@@ -399,3 +399,81 @@ export function IconUser(props) {
     </svg>
   );
 }
+
+/* ===== ไอคอนเมนู sidebar ของโซนผู้ดูแล (docs/task/frontend/07-superadmin-dashboard.md, FE-30) ===== */
+
+export function IconGrid(props) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="4.5" rx="1.5" />
+      <rect x="14" y="11.5" width="7" height="9.5" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+export function IconUsers(props) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" />
+      <path d="M16 5.2a3.5 3.5 0 010 6.6" />
+      <path d="M18 14.2c2.1.9 3.5 3 3.5 5.3" />
+    </svg>
+  );
+}
+
+export function IconLogs(props) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <line x1="8" y1="8" x2="16" y2="8" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <line x1="8" y1="16" x2="13" y2="16" />
+    </svg>
+  );
+}
+
+export function IconDoor(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M6 21V4a1 1 0 011-1h10a1 1 0 011 1v17" />
+      <line x1="4" y1="21" x2="20" y2="21" />
+      <circle cx="14.5" cy="12" r="1" />
+    </svg>
+  );
+}
+
+export function IconClipboardClock(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 4H7a1 1 0 00-1 1v15a1 1 0 001 1h10a1 1 0 001-1v-6" />
+      <rect x="9" y="2.5" width="6" height="3.5" rx="1" />
+      <circle cx="17.5" cy="7.5" r="3.5" />
+      <path d="M17.5 5.8v1.9l1.3.8" />
+    </svg>
+  );
+}
+
+export function IconLogout(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M10 4H6a2 2 0 00-2 2v12a2 2 0 002 2h4" />
+      <polyline points="15 8 19 12 15 16" />
+      <line x1="19" y1="12" x2="10" y2="12" />
+    </svg>
+  );
+}
+
+export function IconTrash(props) {
+  return (
+    <svg {...base} {...props}>
+      <polyline points="4 6 20 6" />
+      <path d="M9 6V4.5a1 1 0 011-1h4a1 1 0 011 1V6" />
+      <path d="M6.5 6l.8 13a1 1 0 001 .9h7.4a1 1 0 001-.9l.8-13" />
+      <line x1="10" y1="10" x2="10" y2="16" />
+      <line x1="14" y1="10" x2="14" y2="16" />
+    </svg>
+  );
+}

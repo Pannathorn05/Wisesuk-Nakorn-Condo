@@ -6,14 +6,14 @@
 }
 
 .nearby-section h3 {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-xl);
   font-weight: 700;
   margin-bottom: var(--space-4);
 }
 
 .nearby-section__empty {
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
 }
 
 .nearby-section__groups {
@@ -22,11 +22,16 @@
   gap: var(--space-4);
 }
 
+/* เส้นคั่นอยู่ใต้ "หัวข้อหมวด" (สถานศึกษา / โรงพยาบาล / ห้างสรรพสินค้าฯ) ไม่ใช่ใต้รายชื่อสถานที่
+   แต่ละแถว — ห้ามใช้ var(--color-border) (#e2ddd0) เพราะการ์ดนี้พื้นหลัง --color-surface-alt
+   (#e6e2d8) สีใกล้กันมากจนแทบมองไม่เห็น ใช้โทนเข้มโปร่งแสงแบบเดียวกับเส้นคั่นใน Footer แทน */
 .nearby-group h4 {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-weight: 700;
   color: var(--color-text-muted);
+  padding-bottom: var(--space-2);
   margin-bottom: var(--space-2);
+  border-bottom: 1px solid rgba(43, 35, 32, 0.16);
 }
 
 .nearby-group__grid {
@@ -39,9 +44,8 @@
   display: flex;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--color-border);
-  font-size: var(--font-size-sm);
+  padding: var(--space-1) 0;
+  font-size: var(--font-size-base);
   min-width: 0;
 }
 

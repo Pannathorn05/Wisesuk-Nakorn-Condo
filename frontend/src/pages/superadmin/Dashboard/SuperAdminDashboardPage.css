@@ -1,0 +1,143 @@
+.sa-dashboard__heading {
+  margin-bottom: var(--space-5);
+}
+
+.sa-dashboard__heading h1 {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+}
+
+.sa-dashboard__heading p {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.sa-dashboard__branches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+/* การ์ด 1 ใบต่อ 1 สาขา — หัวการ์ดชื่อสาขา มีเส้นคั่นก่อนแถวตัวเลข ตามภาพ 52 */
+.branch-summary-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.branch-summary-card h2 {
+  font-size: var(--font-size-base);
+  font-weight: 400;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  overflow-wrap: break-word;
+}
+
+.branch-summary-card__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 120px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+.stat-tile__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.stat-tile__head svg {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.stat-tile__body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.stat-tile__body strong {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-primary);
+}
+
+.stat-tile__total {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.activity-box {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.activity-box h2 {
+  font-size: var(--font-size-base);
+  font-weight: 400;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.activity-box__empty {
+  padding: var(--space-5);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.activity-box__list {
+  list-style: disc;
+  margin: 0;
+  padding: var(--space-4) var(--space-5) var(--space-4) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.activity-box__list li {
+  min-width: 0;
+}
+
+.activity-box__text {
+  display: block;
+  font-size: var(--font-size-sm);
+  overflow-wrap: break-word;
+}
+
+.activity-box__time {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 860px) {
+  .branch-summary-card__tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

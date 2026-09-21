@@ -146,7 +146,6 @@ IMPORTANT:
 * Booking History สำหรับ Member
 * Payment สำหรับ Member
 * Member Booking Flow แบบหลัง Login
-* Admin Login
 * Admin Dashboard
 * Room Management ของ Admin
 * Branch Management ของ Admin
@@ -156,6 +155,21 @@ IMPORTANT:
 * ระบบจัดการสมาชิกสำหรับ Admin
 
 แม้ Prototype จะมีหน้าดังกล่าวอยู่ ให้ใช้เพื่อทำความเข้าใจระบบเท่านั้น และยังไม่ต้อง implement
+
+ข้อยกเว้นที่อนุมัติเพิ่มเมื่อ 2026-09-22:
+
+* **หน้า Login ของ Admin / Super Admin** (Prototype หน้า 39 ภาพ 51) ทำได้แล้ว รวมถึง redirect ตาม role
+  และ route guard ของโซนผู้ดูแล (ดู `docs/task/frontend/06-admin-login.md`)
+* **หน้าแดชบอร์ดของหัวหน้าผู้ดูแลระบบ** (Prototype หน้า 39 ภาพ 52) อนุมัติเพิ่มเมื่อ 2026-09-22 —
+  การ์ดสรุปรายสาขา + กิจกรรมล่าสุด + sidebar/logout · ดู `docs/task/frontend/07-superadmin-dashboard.md`
+* **หน้าจัดการผู้ดูแลระบบ** (Prototype หน้า 40–42 ภาพ 53–55) อนุมัติเพิ่มเมื่อ 2026-09-22 —
+  ตารางรายชื่อผู้ดูแล + เพิ่ม/แก้ไข/ลบ ผ่าน `/api/v1/superadmin/staff`
+  ดู `docs/task/frontend/08-superadmin-staff.md`
+  **ข้อสรุปเรื่องสิทธิ์สาขา (ทีมเคาะแล้ว 2026-09-22)**: superadmin ดูแล**ทุกสาขา**เสมอ (ไม่ต้องเลือกสาขา
+  และห้ามส่ง `branch_id` ตามที่ spec กำหนด) ส่วน **admin เลือกได้สาขาเดียว** ตามที่ backend รองรับจริง
+  (`CreateStaffRequest.branch_id` เป็น string เดี่ยว + หนึ่งสาขามีผู้ดูแลได้คนเดียว)
+  **ยังห้ามทำ**: หน้าจัดการสาขา / activity log เต็มหน้า และแดชบอร์ดของ role admin
+  (เมนูพวกนี้ให้ลิงก์ไปหน้า placeholder ไปก่อน จนกว่าจะเปิดดู prototype แล้วแตก task)
 
 ==================================================
 6. REACT REQUIREMENT

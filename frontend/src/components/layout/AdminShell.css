@@ -1,0 +1,123 @@
+.admin-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+.admin-shell__sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-5) var(--space-4);
+}
+
+.admin-shell__user {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admin-shell__user strong {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  overflow-wrap: break-word;
+}
+
+.admin-shell__user span {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.admin-shell__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.admin-shell__nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.admin-shell__nav-link:hover {
+  background: var(--color-surface-alt);
+}
+
+.admin-shell__nav-link.is-active {
+  background: var(--color-primary);
+  color: var(--color-text-on-dark);
+}
+
+.admin-shell__nav-link svg {
+  flex-shrink: 0;
+}
+
+/* ดันปุ่ม Logout ไปชิดล่างสุดของ sidebar ตามภาพ 52 */
+.admin-shell__logout {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  background: none;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-shell__logout:hover {
+  color: var(--color-primary);
+}
+
+.admin-shell__content {
+  padding: var(--space-6) var(--space-5);
+  min-width: 0;
+}
+
+/* จอแคบ: sidebar ไม่ได้มีภาพ mobile ใน prototype — เลือกวางไว้ด้านบนเป็นแถบเต็มความกว้าง
+   และให้เมนูเลื่อนแนวนอนได้ แทนที่จะซ่อนไว้หลังปุ่มแฮมเบอร์เกอร์ (เมนูมีแค่ 4 รายการ
+   การซ่อนทำให้เข้าถึงยากกว่าโดยไม่จำเป็น) — บันทึกเหตุผลไว้ตาม DoD ของ FE-34 */
+@media (max-width: 860px) {
+  .admin-shell {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+  }
+
+  .admin-shell__sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .admin-shell__nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: var(--space-2);
+  }
+
+  .admin-shell__nav-link {
+    white-space: nowrap;
+  }
+
+  .admin-shell__logout {
+    margin-top: var(--space-4);
+  }
+
+  .admin-shell__content {
+    padding: var(--space-5) var(--space-4);
+  }
+}

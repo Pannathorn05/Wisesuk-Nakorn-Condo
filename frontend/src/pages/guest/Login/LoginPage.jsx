@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { login } from "../../../api/authApi";
 import { setTokens, isLoggedIn } from "../../../utils/authStorage";
 import { validateLogin } from "../../../utils/authValidation";
+import { getHomePathForRole } from "../../../utils/roleRoutes";
 import { AuthCard } from "../../../components/auth/AuthCard";
 import { AuthInput } from "../../../components/auth/AuthInput";
 import { IconMail, IconLockClosed } from "../../../components/icons";
@@ -35,7 +36,9 @@ export function LoginPage() {
     try {
       const res = await login({ email: form.email.trim(), password: form.password });
       setTokens(res.data);
-      navigate("/");
+      // ถ้าเป็นบัญชีผู้ดูแลที่บังเอิญมา login ที่ประตูนี้ ให้ไปโซนของตัวเองตามที่ spec กำกับไว้
+      // (docs/openapi.yaml UserRole) ไม่ค้างอยู่หน้า Guest — member ก็ยังได้ "/" เหมือนเดิม
+      navigate(getHomePathForRole(res.data?.user?.role), { replace: true });
     } catch (err) {
       setFormError(err.message);
     } finally {

@@ -12,7 +12,8 @@ import { BranchAmenitiesCard } from "../../../components/branch/BranchAmenitiesC
 import { OtherBranchesSection } from "../../../components/branch/OtherBranchesSection";
 import { NearbyPlacesSection } from "../../../components/branch/NearbyPlacesSection";
 import { getBranchGalleryPhotos } from "../../../assets/branchPhotos";
-import { IconPin } from "../../../components/icons";
+import { getLineAddFriendUrl } from "../../../utils/lineLink";
+import { IconPin, IconLine } from "../../../components/icons";
 import "./BranchDetailPage.css";
 
 // error.code จาก ApiError (docs/openapi.yaml ErrorCode) — แปลเป็นข้อความเฉพาะบริบทหน้านี้
@@ -32,6 +33,7 @@ export function BranchDetailPage() {
   const { activeBranches } = useBranches();
 
   const otherBranches = activeBranches.filter((b) => b.id !== branchId && b.slug !== branchId).slice(0, 2);
+  const lineAddUrl = getLineAddFriendUrl(branch?.line_id);
 
   const goToTab = (tab) => {
     navigate(tab === "map" ? `/branches/${branchId}/map` : `/branches/${branchId}`);
@@ -117,7 +119,18 @@ export function BranchDetailPage() {
               <Link to={`/rooms?branch_id=${branch.id}`} className="btn btn-primary">
                 จองห้องพัก
               </Link>
-              {branch.phones?.length > 0 ? (
+              {/* ปุ่มนี้ให้กดแล้วแอด LINE OA ของสาขาได้เลย — ใช้ line_id จริงจาก backend
+                  ถ้าสาขาไหนไม่มี line_id ค่อยตกไปที่โทรศัพท์ แล้วค่อยตกไปหน้าติดต่อเราเป็นลำดับสุดท้าย */}
+              {lineAddUrl ? (
+                <a
+                  href={lineAddUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-outline"
+                >
+                  <IconLine width={18} height={18} /> แอดไลน์ {branch.line_id}
+                </a>
+              ) : branch.phones?.length > 0 ? (
                 <a href={`tel:${branch.phones[0]}`} className="btn btn-outline">
                   ติดต่อสอบถาม
                 </a>
