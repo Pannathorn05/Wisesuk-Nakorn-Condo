@@ -60,9 +60,12 @@ func main() {
 
 	fmt.Println("ใส่ข้อมูลตั้งต้นเรียบร้อย")
 	fmt.Println("  superadmin : super@wisetsuk.com")
-	fmt.Println("  admin      : admin.1@wisetsuk.com (ประชาอุทิศ 45)")
-	fmt.Println("  admin      : admin.2@wisetsuk.com (บางแค)")
-	fmt.Println("  admin      : admin.3@wisetsuk.com (เจริญกรุงเพลส)")
+	fmt.Println("  admin      : adminpracha@wisetsuk.com (ประชาอุทิศ 45)")
+	fmt.Println("  admin      : adminbangkae@wisetsuk.com (บางแค)")
+	fmt.Println("  admin      : admincharoenkrung@wisetsuk.com (เจริญกรุงเพลส)")
+	fmt.Println("  member     : member.1@wisetsuk.com")
+	fmt.Println("  member     : member.2@wisetsuk.com")
+	fmt.Println("  member     : member.3@wisetsuk.com")
 	fmt.Printf("  รหัสผ่าน   : %s\n", *password)
 	fmt.Fprintln(os.Stderr, "\nคำเตือน: เปลี่ยนรหัสผ่านทันทีหลังเข้าสู่ระบบครั้งแรก")
 }
@@ -359,9 +362,9 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 	}
 
 	adminSeeds := []struct{ email, first, last string }{
-		{"admin.1@wisetsuk.com", "วิรัช", "มั่นคง"},
-		{"admin.2@wisetsuk.com", "ศิริพร", "แสงทอง"},
-		{"admin.3@wisetsuk.com", "สมหญิง", "งานดี"},
+		{"adminpracha@wisetsuk.com", "วิรัช", "มั่นคง"},
+		{"adminbangkae@wisetsuk.com", "ศิริพร", "แสงทอง"},
+		{"admincharoenkrung@wisetsuk.com", "สมหญิง", "งานดี"},
 	}
 	// หนึ่งสาขามีผู้ดูแลคนเดียว — adminSeeds จึงจับคู่กับ branchIDs ทีละคู่ตามลำดับ
 	for i, a := range adminSeeds {
@@ -371,6 +374,21 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 			 ON CONFLICT (email) DO NOTHING`,
 			a.email, passwordHash, a.first, a.last, branchIDs[i]); err != nil {
 			return fmt.Errorf("admin %s: %w", a.email, err)
+		}
+	}
+
+	memberSeeds := []struct{ email, first, last string }{
+		{"member.1@wisetsuk.com", "อรุณ", "ดีใจ"},
+		{"member.2@wisetsuk.com", "พิมพ์ใจ", "รักเรียน"},
+		{"member.3@wisetsuk.com", "ธนวัฒน์", "ทองคำ"},
+	}
+	for _, m := range memberSeeds {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO users (email, password_hash, first_name, last_name, role)
+			 VALUES ($1, $2, $3, $4, 'member')
+			 ON CONFLICT (email) DO NOTHING`,
+			m.email, passwordHash, m.first, m.last); err != nil {
+			return fmt.Errorf("member %s: %w", m.email, err)
 		}
 	}
 
