@@ -20,6 +20,10 @@ const userColumns = `
 
 const userJoins = ` FROM users u LEFT JOIN branches b ON b.id = u.branch_id `
 
+// notDeleted ต่อท้ายทุก WHERE ที่อ่านผู้ใช้ เพื่อไม่ให้บัญชีที่ถูก soft delete
+// (ดู DeleteAdmin) โผล่กลับมาที่ไหนอีก ไม่ว่าจะเป็นล็อกอิน โปรไฟล์ หรือหน้ารายชื่อ
+const notDeleted = ` AND u.deleted_at IS NULL`
+
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	err := row.Scan(
@@ -61,12 +65,12 @@ func (r *Repository) Create(ctx context.Context, p CreateUserParams) (*User, err
 }
 
 func (r *Repository) GetByID(ctx context.Context, id types.UserID) (*User, error) {
-	q := `SELECT ` + userColumns + userJoins + ` WHERE u.id = $1`
+	q := `SELECT ` + userColumns + userJoins + ` WHERE u.id = $1` + notDeleted
 	return scanUser(r.db.Executor(ctx).QueryRow(ctx, q, id))
 }
 
 func (r *Repository) GetByEmail(ctx context.Context, email string) (*User, error) {
-	q := `SELECT ` + userColumns + userJoins + ` WHERE u.email = $1`
+	q := `SELECT ` + userColumns + userJoins + ` WHERE u.email = $1` + notDeleted
 	return scanUser(r.db.Executor(ctx).QueryRow(ctx, q, normalizeEmail(email)))
 }
 
@@ -136,13 +140,13 @@ func (r *Repository) ListMembers(ctx context.Context, search string, limit, offs
 
 	var total int
 	if err := exec.QueryRow(ctx,
-		`SELECT COUNT(*) FROM users u WHERE u.role = 'member' AND`+memberSearchClause,
+		`SELECT COUNT(*) FROM users u WHERE u.role = 'member' AND`+memberSearchClause+notDeleted,
 		search).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	q := `SELECT ` + userColumns + userJoins +
-		` WHERE u.role = 'member' AND` + memberSearchClause +
+		` WHERE u.role = 'member' AND` + memberSearchClause + notDeleted +
 		` ORDER BY u.created_at DESC LIMIT $2 OFFSET $3`
 	rows, err := exec.Query(ctx, q, search, limit, offset)
 	if err != nil {
@@ -157,7 +161,8 @@ func (r *Repository) ListMembers(ctx context.Context, search string, limit, offs
 // ListStaff คืน admin + superadmin สำหรับหน้า "จัดการผู้ดูแลระบบ"
 func (r *Repository) ListStaff(ctx context.Context) ([]User, error) {
 	q := `SELECT ` + userColumns + userJoins +
-		` WHERE u.role IN ('admin', 'superadmin') ORDER BY u.role DESC, u.created_at`
+		` WHERE u.role IN ('admin', 'superadmin')` + notDeleted +
+		` ORDER BY u.role DESC, u.created_at`
 	rows, err := r.db.Executor(ctx).Query(ctx, q)
 	if err != nil {
 		return nil, err
@@ -193,8 +198,13 @@ func (r *Repository) UpdateStaff(ctx context.Context, id types.UserID, p UpdateS
 	return r.GetByID(ctx, id)
 }
 
+// DeleteAdmin คือ soft delete: ปักธง deleted_at และปิดบัญชี แถวยังอยู่ใน DB
+// เพื่อไม่ให้ activity_logs.actor_id, bookings.reviewed_by, payments.reviewed_by
+// ที่อ้างอิงไว้หลุดหาย (ดู migration 0007_staff_soft_delete.sql)
 func (r *Repository) DeleteAdmin(ctx context.Context, id types.UserID) error {
-	tag, err := r.db.Executor(ctx).Exec(ctx, `DELETE FROM users WHERE id = $1 AND role = 'admin'`, id)
+	tag, err := r.db.Executor(ctx).Exec(ctx,
+		`UPDATE users SET deleted_at = now(), is_active = false, updated_at = now()
+		 WHERE id = $1 AND role = 'admin' AND deleted_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -301,7 +311,7 @@ func (r *Repository) MarkNotificationsRead(ctx context.Context, userID types.Use
 func (r *Repository) GetByIdentity(ctx context.Context, provider, providerUserID string) (*User, error) {
 	q := `SELECT ` + userColumns + userJoins +
 		` JOIN user_identities i ON i.user_id = u.id
-		  WHERE i.provider = $1 AND i.provider_user_id = $2`
+		  WHERE i.provider = $1 AND i.provider_user_id = $2` + notDeleted
 	return scanUser(r.db.Executor(ctx).QueryRow(ctx, q, provider, providerUserID))
 }
 

@@ -10,6 +10,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"backend/internal/httpx"
 	"backend/internal/middleware"
@@ -206,6 +207,71 @@ func TestUpdateStaffRejectsBranchForSuperAdmin(t *testing.T) {
 	}, "127.0.0.1")
 
 	assertFieldError(t, err, "branch_id")
+}
+
+// DeleteAdmin ต้อง soft delete เท่านั้น — spec (openapi.yaml) บอกไว้ว่า "soft delete"
+// แต่ของเดิมยิง DELETE ตรง ๆ ลบแถวถาวร เทสนี้กันไม่ให้กลับไปเป็นแบบนั้นอีก
+func TestDeleteAdminIsSoftDelete(t *testing.T) {
+	e := newEnv(t)
+	branch := newBranch(t, e, "branch-del", "สาขาทดสอบลบ")
+	user := createStaff(t, e, "deleteme@wisetsuk.test", branch)
+	ctx := context.Background()
+
+	if err := e.svc.DeleteAdmin(ctx, superIdentity(e), user.ID, "127.0.0.1"); err != nil {
+		t.Fatalf("DeleteAdmin คืน error: %v", err)
+	}
+
+	// แถวต้องยังอยู่ใน DB (ไม่ใช่ COUNT = 0) และ deleted_at ต้องถูกปักธง
+	var deletedAt *time.Time
+	var isActive bool
+	err := e.pool.QueryRow(ctx,
+		`SELECT deleted_at, is_active FROM users WHERE id = $1`, user.ID).Scan(&deletedAt, &isActive)
+	if err != nil {
+		t.Fatalf("แถวผู้ใช้ต้องยังอยู่ใน DB แต่หาไม่เจอ: %v", err)
+	}
+	if deletedAt == nil {
+		t.Error("deleted_at ต้องถูกปักธงหลังลบ")
+	}
+	if isActive {
+		t.Error("is_active ต้องเป็น false หลังลบ")
+	}
+
+	// ต้องไม่โผล่ในหน้ารายชื่อผู้ดูแลอีก
+	staff, err := e.svc.ListStaff(ctx)
+	if err != nil {
+		t.Fatalf("ListStaff คืน error: %v", err)
+	}
+	for _, s := range staff {
+		if s.ID == user.ID {
+			t.Error("บัญชีที่ถูกลบต้องไม่โผล่ใน ListStaff")
+		}
+	}
+
+	// ต้องล็อกอินไม่ได้อีกต่อไป
+	if _, err := e.svc.Login(ctx, account.LoginInput{
+		Email:    "deleteme@wisetsuk.test",
+		Password: testStaffDefaultPassword,
+	}, "127.0.0.1"); err == nil {
+		t.Error("บัญชีที่ถูกลบต้องล็อกอินไม่ได้")
+	}
+}
+
+// หัวใจของการทำ soft delete ให้ถูก: ลบผู้ดูแลแล้วสาขาต้องว่างลงจริง
+// ไม่งั้น partial unique index (uq_admin_per_branch) จะบล็อกไม่ให้ตั้งผู้ดูแลคนใหม่ตลอดไป
+func TestDeleteAdminFreesBranchForNewAdmin(t *testing.T) {
+	e := newEnv(t)
+	branch := newBranch(t, e, "branch-reuse", "สาขาทดสอบใช้ซ้ำ")
+	user := createStaff(t, e, "old-admin@wisetsuk.test", branch)
+	ctx := context.Background()
+
+	if err := e.svc.DeleteAdmin(ctx, superIdentity(e), user.ID, "127.0.0.1"); err != nil {
+		t.Fatalf("DeleteAdmin คืน error: %v", err)
+	}
+
+	replacement := createStaff(t, e, "new-admin@wisetsuk.test", branch)
+	if replacement.BranchID == nil || *replacement.BranchID != branch {
+		t.Fatalf("ผู้ดูแลคนใหม่ต้องรับสาขาเดิมได้หลังคนเก่าถูกลบ ได้ %v", replacement.BranchID)
+	}
 }
 
 // ---------------------------------------------------------------- ชั้นฐานข้อมูล
