@@ -1,8 +1,8 @@
 package middleware
 
 import (
+	"context"
 	"log/slog"
-	"net"
 	"strings"
 	"time"
 
@@ -67,10 +67,22 @@ func RequestIDFrom(c *gin.Context) string { return c.GetString(ctxKeyRequestID) 
 
 // ---------------------------------------------------------------- auth
 
+// Accounts คือสิ่งเดียวที่ Authenticate ต้องรู้เกี่ยวกับบัญชีผู้ใช้
+// ประกาศไว้ฝั่งผู้ใช้งาน (account import middleware อยู่แล้ว จะ import กลับไม่ได้)
+type Accounts interface {
+	// CurrentIdentity คืนตัวตนปัจจุบันของผู้ใช้จากฐานข้อมูล
+	// ok = false เมื่อบัญชีไม่มีอยู่ ถูกลบ หรือถูกระงับ · err คือปัญหาของระบบ ไม่ใช่ของผู้ใช้
+	CurrentIdentity(ctx context.Context, id types.UserID) (identity Identity, ok bool, err error)
+}
+
 // Authenticate ตรวจ Bearer token และผูก Identity เข้ากับ request context
 //
+// token ใช้ยืนยันแค่ว่า "เป็นใคร" (claim sub) ส่วนสิทธิ์ สาขา และสถานะบัญชีอ่านจากฐานข้อมูล
+// ทุกคำขอ การลบ ระงับ หรือย้ายสาขาผู้ดูแลจึงมีผลทันที ไม่ต้องรอ access token หมดอายุ
+// (เดิมเชื่อ role/branch_id ใน claim ทำให้บัญชีที่ถูกลบยังใช้งานต่อได้อีกสูงสุด 30 นาที)
+//
 // httpx.Error เรียก c.AbortWithStatusJSON ให้อยู่แล้ว จึงไม่ต้อง c.Abort() ซ้ำ
-func Authenticate(mgr *auth.Manager) gin.HandlerFunc {
+func Authenticate(mgr *auth.Manager, accounts Accounts) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		token, ok := strings.CutPrefix(header, "Bearer ")
@@ -91,16 +103,16 @@ func Authenticate(mgr *auth.Manager) gin.HandlerFunc {
 			return
 		}
 
-		identity := Identity{UserID: userID, Role: claims.Role, Name: claims.Name}
-		if claims.BranchID != "" {
-			branchID, err := types.ParseID[types.Branch](claims.BranchID)
-			if err != nil {
-				httpx.Error(c, httpx.ErrUnauthorized)
-				return
-			}
-			identity.BranchID = &branchID
+		identity, ok, err := accounts.CurrentIdentity(c.Request.Context(), userID)
+		if err != nil {
+			httpx.Error(c, httpx.ErrInternal.Wrap(err))
+			return
 		}
-		// admin ที่ไม่มีสาขาผูกอยู่ ถือว่า token ใช้ไม่ได้
+		if !ok {
+			httpx.Error(c, httpx.ErrUnauthorized)
+			return
+		}
+		// admin ที่ไม่มีสาขาผูกอยู่ ถือว่าใช้งานไม่ได้ (DB มี CHECK กันไว้อยู่แล้ว เช็คซ้ำกันพลาด)
 		if identity.Role == types.RoleAdmin && identity.BranchID == nil {
 			httpx.Error(c, httpx.ErrUnauthorized)
 			return
@@ -186,19 +198,13 @@ func Recoverer() gin.HandlerFunc {
 	}
 }
 
-// ClientIP อ่าน IP จริงจาก X-Forwarded-For (กรณีอยู่หลัง reverse proxy)
+// ClientIP คือ IP ของผู้เรียกที่บันทึกลง activity log และ log ของ request
 //
-// ไม่ใช้ c.ClientIP() ของ gin เพราะผลลัพธ์ขึ้นกับการตั้ง TrustedProxies
-// ตัวนี้อ่านตรง ๆ เพื่อให้ค่าที่บันทึกลง activity log เหมือนเดิมทุกประการ
+// ใช้ c.ClientIP() ของ gin ซึ่งเชื่อ X-Forwarded-For / X-Real-IP ก็ต่อเมื่อ connection
+// มาจาก proxy ที่ตั้งไว้ใน TRUSTED_PROXIES (ดู routes.New) และเลือก IP ขวาสุดที่ไม่ใช่ proxy
+// ไม่ใช่ตัวซ้ายสุด ซึ่งเป็นค่าที่ client เขียนมาเองได้
+//
+// ของเดิมอ่านค่าแรกของ X-Forwarded-For ตรง ๆ ทุกคำขอ ใครก็ส่ง header มาปลอม IP ใน log ได้
 func ClientIP(c *gin.Context) string {
-	if fwd := c.GetHeader("X-Forwarded-For"); fwd != "" {
-		if first, _, found := strings.Cut(fwd, ","); found {
-			return strings.TrimSpace(first)
-		}
-		return strings.TrimSpace(fwd)
-	}
-	if host, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
-		return host
-	}
-	return c.Request.RemoteAddr
+	return c.ClientIP()
 }

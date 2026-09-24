@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -23,10 +24,13 @@ type Config struct {
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
 
-	UploadDir       string
-	PublicBaseURL   string
-	MaxUploadBytes  int64
-	AllowedOrigins  []string
+	UploadDir      string
+	PublicBaseURL  string
+	MaxUploadBytes int64
+	AllowedOrigins []string
+	// TrustedProxies คือ IP/CIDR ของ reverse proxy ที่อยู่หน้า API (nginx, load balancer)
+	// เชื่อ X-Forwarded-For เฉพาะคำขอที่วิ่งมาจากในรายการนี้ ว่าง = ไม่มี proxy ใช้ IP ของ connection
+	TrustedProxies  []string
 	BcryptCost      int
 	SeedAdminSecret string
 
@@ -65,6 +69,7 @@ func Load() (*Config, error) {
 		PublicBaseURL:   strings.TrimRight(getEnv("PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
 		MaxUploadBytes:  int64(getEnvInt("MAX_UPLOAD_MB", 5)) * 1024 * 1024,
 		AllowedOrigins:  splitAndTrim(getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
+		TrustedProxies:  splitAndTrim(getEnv("TRUSTED_PROXIES", "")),
 		BcryptCost:      getEnvInt("BCRYPT_COST", 12),
 		SeedAdminSecret: getEnv("SEED_DEFAULT_PASSWORD", "Wisetsuk!2026"),
 		StaffDefaultPassword: getEnv("STAFF_DEFAULT_PASSWORD",
@@ -84,7 +89,20 @@ func Load() (*Config, error) {
 	if len(cfg.JWTSecret) < 32 {
 		return nil, fmt.Errorf("config: ต้องกำหนด JWT_SECRET ความยาวอย่างน้อย 32 ตัวอักษร")
 	}
+	for _, p := range cfg.TrustedProxies {
+		if !isIPOrCIDR(p) {
+			return nil, fmt.Errorf("config: TRUSTED_PROXIES ต้องเป็น IP หรือ CIDR คั่นด้วยจุลภาค (ค่าที่ผิด: %q)", p)
+		}
+	}
 	return cfg, nil
+}
+
+func isIPOrCIDR(s string) bool {
+	if net.ParseIP(s) != nil {
+		return true
+	}
+	_, _, err := net.ParseCIDR(s)
+	return err == nil
 }
 
 func (c *Config) IsProduction() bool { return c.Env == "production" }

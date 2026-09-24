@@ -1,7 +1,8 @@
 // เทสสิ่งอำนวยความสะดวกรายห้อง ยิงผ่าน router ตัวจริงเหมือนที่ผู้ใช้เรียก
 //
-// สัญญาที่ต้องยืนยันมีสองข้อ: amenities โผล่เฉพาะหน้ารายละเอียดห้อง (GET /rooms/{id})
-// ไม่ติดไปกับผลค้นหา และแอดมินแก้ชุดสิ่งอำนวยความสะดวกได้ผ่าน POST/PUT /admin/rooms
+// สัญญาที่ต้องยืนยันมีสองข้อ: amenities โผล่ทั้งหน้ารายละเอียดห้อง (GET /rooms/{id}) และ
+// ผลค้นหา (GET /rooms/search) โดยเป็นของห้องนั้นจริง ๆ และแอดมินแก้ชุดสิ่งอำนวยความสะดวก
+// ได้ผ่าน POST/PUT /admin/rooms
 package room_test
 
 import (
@@ -153,13 +154,27 @@ func TestGetRoomWithoutAmenitiesReturnsNone(t *testing.T) {
 	}
 }
 
-// ผลค้นหาคืนทีละหลายห้อง จึงไม่แบก amenities ไปด้วยตามที่ตกลงไว้ใน openapi
-func TestSearchDoesNotReturnAmenities(t *testing.T) {
+// ผลค้นหาต้องพก amenities ของแต่ละห้องมาด้วย และต้องเป็นของห้องนั้นจริง ๆ ไม่ใช่ชุดรวม
+//
+// เดิม endpoint นี้ตกลงกันว่าไม่ส่ง amenities มา (ดู TestSearchDoesNotReturnAmenities ในอดีต)
+// โดยเข้าใจว่าไม่มีข้อมูลระดับห้องรองรับ ซึ่งไม่จริง — ตาราง room_amenities มีอยู่แล้วและ
+// GET /rooms/{id} ก็คืนได้ ผลคือหน้าค้นหาต้อง fallback ไปโชว์ amenities ของ "สาขา" แทน
+// ห้องเปล่าที่ไม่มีแอร์/เตียงจึงถูกแสดงว่ามี สัญญาเดิมตั้งอยู่บนข้อมูลผิดจึงถูกกลับด้านที่นี่
+func TestSearchReturnsAmenitiesPerRoom(t *testing.T) {
 	e := newEnv(t)
 
+	// sort_order สลับกับลำดับที่ผูก เพื่อพิสูจน์ว่า API เรียงให้จริง ไม่ใช่บังเอิญตรง
 	aircon := insertAmenity(t, e, "aircon", "เครื่องปรับอากาศ", 0)
-	roomID := insertRoom(t, e, "304")
-	linkAmenities(t, e, roomID, aircon)
+	keycard := insertAmenity(t, e, "keycard", "คีย์การ์ด", 5)
+	bathroom := insertAmenity(t, e, "private-bathroom", "ห้องน้ำในตัว", 2)
+
+	full := insertRoom(t, e, "304")
+	linkAmenities(t, e, full, keycard, aircon, bathroom)
+
+	bare := insertRoom(t, e, "305")
+	linkAmenities(t, e, bare, keycard)
+
+	insertRoom(t, e, "306") // ห้องที่ไม่ผูกอะไรเลย ต้องไม่ยืมของห้องอื่นมาโชว์
 
 	rec := e.do(t, http.MethodGet, "/api/v1/rooms/search?branch_id="+e.app.Fixture.BranchAID.String(), "", "")
 	if rec.Code != http.StatusOK {
@@ -169,18 +184,37 @@ func TestSearchDoesNotReturnAmenities(t *testing.T) {
 	var body struct {
 		Data []struct {
 			RoomNumber string `json:"room_number"`
-			Amenities  []any  `json:"amenities"`
+			Amenities  []struct {
+				Name string `json:"name"`
+			} `json:"amenities"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("อ่าน response ไม่ได้: %v", err)
 	}
-	if len(body.Data) == 0 {
-		t.Fatal("ผลค้นหาว่าง ต้องเจอห้องที่เพิ่งสร้าง")
-	}
+
+	got := map[string][]string{}
 	for _, rm := range body.Data {
-		if len(rm.Amenities) != 0 {
-			t.Errorf("ห้อง %s ในผลค้นหามี amenities ติดมาด้วย ต้องไม่มี", rm.RoomNumber)
+		names := make([]string, 0, len(rm.Amenities))
+		for _, a := range rm.Amenities {
+			names = append(names, a.Name)
+		}
+		got[rm.RoomNumber] = names
+	}
+
+	want := map[string][]string{
+		"304": {"เครื่องปรับอากาศ", "ห้องน้ำในตัว", "คีย์การ์ด"},
+		"305": {"คีย์การ์ด"},
+		"306": {},
+	}
+	for roomNumber, wantNames := range want {
+		gotNames, ok := got[roomNumber]
+		if !ok {
+			t.Errorf("ไม่เจอห้อง %s ในผลค้นหา", roomNumber)
+			continue
+		}
+		if !equalStrings(gotNames, wantNames) {
+			t.Errorf("ห้อง %s amenities = %v ต้องเป็น %v", roomNumber, gotNames, wantNames)
 		}
 	}
 }

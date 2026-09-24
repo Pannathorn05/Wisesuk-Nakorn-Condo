@@ -11,7 +11,7 @@ REST API เขียนด้วย **Go + PostgreSQL** รันด้วย *
 cd backend
 cp .env.example .env          # แก้ POSTGRES_PASSWORD และ JWT_SECRET ก่อน
 docker compose up -d --build  # ขึ้น API + PostgreSQL
-docker compose run --rm seed  # ใส่ข้อมูลตั้งต้น (3 สาขา + บัญชีผู้ดูแล)
+docker compose run --rm seed  # ใส่ข้อมูลตั้งต้น (3 สาขา + บัญชีผู้ดูแล + รูปเดโมจาก uploads/<slug>/)
 ```
 
 ตรวจว่าใช้งานได้: <http://localhost:8080/health>
@@ -218,13 +218,18 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 | GET | `/branches/{id}` | รายละเอียดสาขา + รูป + สิ่งอำนวยความสะดวก + สถานที่ใกล้เคียง |
 | GET | `/amenities` | รายการสิ่งอำนวยความสะดวกทั้งหมด |
 | GET | `/room-types?branch_id=` | ประเภทห้องพัก |
-| GET | `/rooms/search` | ค้นหาห้องพัก (ดูตัวกรองด้านล่าง) |
-| GET | `/rooms/{id}` | รายละเอียดห้อง + สิ่งอำนวยความสะดวกของห้อง |
+| GET | `/rooms/search` | ค้นหาห้องพัก + สิ่งอำนวยความสะดวกของแต่ละห้อง (ดูตัวกรองด้านล่าง) |
+| GET | `/rooms/{id}` | รายละเอียดห้อง + สิ่งอำนวยความสะดวก + แกลเลอรีรูปห้อง |
 
 ตัวกรองของ `/rooms/search`: `branch_id`, `room_type_id`, `stay_type` (`daily`/`monthly`),
 `check_in`, `check_out`, `move_in_date` (รูปแบบ `YYYY-MM-DD`), `min_price`, `max_price`, `page`, `page_size`
 
 > คืนเฉพาะห้องที่ **จองได้จริง** — ตัดห้องที่สถานะไม่ว่าง และห้องที่มีการจองทับช่วงวันที่ออกแล้ว
+
+**ปิดแล้วปิดเลย** — ฝั่งสาธารณะไม่เห็นของที่ปิดใช้งาน (`is_active = false`) ทุกช่องทาง
+`GET /branches/{id}` (ทั้ง id และ slug) ของสาขาที่ปิดตอบ **404** · `GET /rooms/{id}` ตอบ **404**
+เมื่อห้องถูกลบ *หรือ* สาขาของห้องถูกปิด · `/rooms/search` ก็ตัดห้องทั้งสองแบบออก
+ฝั่ง `/admin` และ `/superadmin` ยังเห็นเหมือนเดิม
 
 ### ต้องเข้าสู่ระบบ (ทุกสิทธิ์)
 
@@ -272,7 +277,10 @@ Base URL: `/api/v1` — ทุก response ห่อด้วย `{"data": ...}`
 | POST | `/admin/branch/images/upload` | อัปโหลดรูปสาขา (multipart: `image`, `caption`, `sort_order`) |
 | POST | `/admin/branch/images` | เพิ่มรูปสาขาจาก URL ภายนอก (JSON: `image_url`, `caption`, `sort_order`) |
 | DELETE | `/admin/branch/images/{id}` | ลบรูปสาขา |
-| POST | `/admin/rooms/{id}/image` | อัปโหลดรูปห้อง (multipart: `image`) |
+| POST | `/admin/rooms/{id}/image` | อัปโหลดรูปปกห้อง — รูปเดียวต่อห้อง (multipart: `image`) |
+| POST | `/admin/rooms/{id}/images/upload` | อัปโหลดรูปเข้าแกลเลอรีห้อง (multipart: `image`, `sort_order`) |
+| POST | `/admin/rooms/{id}/images` | เพิ่มรูปแกลเลอรีจาก URL ภายนอก (JSON: `image_url`, `sort_order`) |
+| DELETE | `/admin/rooms/{id}/images/{imageID}` | ลบรูปออกจากแกลเลอรีห้อง |
 | GET | `/admin/members` | รายชื่อสมาชิก (ค้นด้วย `search`) |
 | GET | `/admin/members/{id}/bookings` | ประวัติการจองของสมาชิกรายคน |
 | GET | `/admin/activity-logs` | ประวัติการใช้งาน (กรอง `search`, `actor_role`, `actor_id`, `action`, `branch_id`) |
@@ -337,6 +345,9 @@ approved  หรือ  rejected
 - รหัสผ่านเก็บเป็น **bcrypt** (cost 12) ไม่มีการเก็บรหัสผ่านจริงที่ใดเลย
 - **Refresh token rotation** — เก็บเฉพาะ SHA-256 hash ลง DB, ใช้ครั้งเดียวแล้วถูกเพิกถอนทันที
 - เปลี่ยนรหัสผ่านหรือรีเซ็ตรหัสผ่านแล้ว **session อื่นทั้งหมดถูกเตะออก**
+- **ตรวจบัญชีจาก DB ทุกคำขอ** — role/สาขา/สถานะไม่ได้เชื่อจาก JWT ลบ ระงับ หรือย้ายสาขาผู้ดูแลจึงมีผลทันที
+- **Rate limit ที่ `/auth/login`** — ผิด 5 ครั้ง/15 นาทีต่อ (อีเมล, IP) หรือ 20 ครั้ง/15 นาทีต่อ IP → 429 + `Retry-After` (นับที่ DB)
+- **IP ของผู้เรียกปลอมไม่ได้** — เชื่อ `X-Forwarded-For` เฉพาะคำขอที่มาจาก `TRUSTED_PROXIES`
 - ข้อความ login ผิดเหมือนกันทุกกรณี + เผาเวลาเท่ากันเมื่อไม่พบอีเมล (กัน user enumeration)
 - **Token รีเซ็ตรหัสผ่าน** — เก็บเฉพาะ SHA-256 hash ลง DB เหมือน refresh token, อายุ 15 นาที,
   ใช้ได้ครั้งเดียว, ขอใบใหม่แล้วใบเก่าถูกเพิกถอนทันที, จำกัด 5 ครั้ง/ชม./อีเมล (นับที่ DB)

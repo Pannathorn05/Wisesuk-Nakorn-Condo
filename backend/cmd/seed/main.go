@@ -25,6 +25,7 @@ import (
 
 func main() {
 	password := flag.String("password", "", "รหัสผ่านตั้งต้นของบัญชีผู้ดูแล (ค่าเริ่มต้นอ่านจาก SEED_DEFAULT_PASSWORD)")
+	uploads := flag.String("uploads", "", "โฟลเดอร์รูปเดโม uploads/<slug>/ (ค่าเริ่มต้นอ่านจาก UPLOAD_DIR)")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -33,6 +34,17 @@ func main() {
 	}
 	if *password == "" {
 		*password = cfg.SeedAdminSecret
+	}
+	if *uploads == "" {
+		*uploads = cfg.UploadDir
+	}
+
+	// ไม่มีโฟลเดอร์รูป (เช่นเซิร์ฟเวอร์ที่ไม่ได้ต่อ volume ไว้) ไม่ใช่เหตุให้ seed ทั้งก้อนล้ม
+	// ข้ามแค่ส่วนรูปเดโม ข้อมูลส่วนอื่นยังลงครบ
+	imgs := &demoImages{dir: *uploads, baseURL: cfg.PublicBaseURL}
+	if _, err := os.Stat(*uploads); err != nil {
+		fmt.Fprintf(os.Stderr, "ข้ามรูปเดโม — ไม่พบโฟลเดอร์ %s\n", *uploads)
+		imgs = nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -54,11 +66,14 @@ func main() {
 		log.Fatalf("hash รหัสผ่านไม่สำเร็จ: %v", err)
 	}
 
-	if err := seed(ctx, pool, hash); err != nil {
+	if err := seed(ctx, pool, hash, imgs); err != nil {
 		log.Fatalf("seed ไม่สำเร็จ: %v", err)
 	}
 
 	fmt.Println("ใส่ข้อมูลตั้งต้นเรียบร้อย")
+	if imgs != nil {
+		fmt.Printf("  รูปเดโม   : %s -> %s/uploads/\n", imgs.dir, imgs.baseURL)
+	}
 	fmt.Println("  superadmin : super@wisetsuk.com")
 	fmt.Println("  admin      : adminpracha@wisetsuk.com (ประชาอุทิศ 45)")
 	fmt.Println("  admin      : adminbangkae@wisetsuk.com (บางแค)")
@@ -70,7 +85,8 @@ func main() {
 	fmt.Fprintln(os.Stderr, "\nคำเตือน: เปลี่ยนรหัสผ่านทันทีหลังเข้าสู่ระบบครั้งแรก")
 }
 
-func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
+// imgs = nil แปลว่าไม่แตะรูปเลย (ไม่มีโฟลเดอร์ uploads ให้อ่าน)
+func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string, imgs *demoImages) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -158,6 +174,13 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 			return fmt.Errorf("สาขา %s: %w", b.slug, err)
 		}
 		branchIDs = append(branchIDs, id)
+
+		// แกลเลอรีสาขาจากไฟล์ใน uploads/<slug>/ ทั้งโฟลเดอร์
+		if imgs != nil {
+			if err := imgs.seedBranch(ctx, tx, id, b.slug); err != nil {
+				return err
+			}
+		}
 	}
 
 	// ------------------------------------------------------------ สิ่งอำนวยความสะดวก
@@ -328,6 +351,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 
 	// ห้องพักรายสาขา (ตามลำดับใน branches) — ราคาอยู่ในช่วง monthly_price_min..max ของสาขานั้น
 	// typeName ว่าง = ไม่ระบุประเภทห้อง (room_type_id เป็น NULL)
+	// cover คือรูปปกห้อง เป็น path ใต้ uploads/<slug>/ ของสาขานั้น (ดู images.go)
 	type roomSeed struct {
 		number, building string
 		floor            int
@@ -336,34 +360,35 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 		sizeSqm          float64
 		typeName         string
 		amenities        []string
+		cover            string
 	}
 	roomsByBranch := map[int][]roomSeed{
 		// ประชาอุทิศ 45 — รายวัน 1 ห้อง รายเดือน 3 ห้อง
 		0: {
 			{"201", "1", 2, "daily", 500, 21, "ห้องแอร์",
-				[]string{"aircon", "private-bathroom", "bed", "fridge", "keycard"}},
+				[]string{"aircon", "private-bathroom", "bed", "fridge", "keycard"}, "days/d-45-2.jpg"},
 			{"302", "1", 3, "monthly", 3400, 21, "ห้องแอร์",
-				[]string{"aircon", "private-bathroom", "bed", "desk", "keycard"}},
+				[]string{"aircon", "private-bathroom", "bed", "desk", "keycard"}, "month/m-45-3 (1).jpg"},
 			{"409", "2", 4, "monthly", 2900, 21, "ห้องเปล่า",
-				[]string{"aircon", "private-bathroom", "keycard"}},
+				[]string{"aircon", "private-bathroom", "keycard"}, "month/m-45-4 (1).jpg"},
 			{"511", "2", 5, "monthly", 2200, 21, "ห้องเปล่า",
-				[]string{"private-bathroom", "keycard"}},
+				[]string{"private-bathroom", "keycard"}, "month/m-45-6 (1).jpg"},
 		},
 		// บางแค — รายเดือนทั้งหมด สาขานี้ไม่รับรายวัน (daily_price_from เป็น NULL)
 		1: {
 			{"301", "1", 3, "monthly", 3500, 30, "",
-				[]string{"furniture", "keycard", "lift"}},
+				[]string{"furniture", "keycard", "lift"}, "bk-2.jpg"},
 			{"302", "1", 3, "monthly", 4000, 30, "",
-				[]string{"furniture", "keycard", "lift"}},
+				[]string{"furniture", "keycard", "lift"}, "bk-2.jpg"},
 			{"303", "1", 3, "monthly", 4500, 46, "",
-				[]string{"furniture", "keycard", "lift"}},
+				[]string{"furniture", "keycard", "lift"}, "bk-2.jpg"},
 		},
 		// เจริญกรุงเพลส — รายวัน 1 ห้อง รายเดือน 1 ห้อง ยังไม่ระบุขนาดห้อง
 		2: {
 			{"201", "1", 2, "daily", 950, 0, "ห้องแอร์",
-				[]string{"aircon", "private-bathroom", "bed", "fridge", "keycard"}},
+				[]string{"aircon", "private-bathroom", "bed", "fridge", "keycard"}, "ckp-24.jpg"},
 			{"301", "1", 3, "monthly", 7700, 0, "ห้องแอร์",
-				[]string{"aircon", "private-bathroom", "furniture", "keycard"}},
+				[]string{"aircon", "private-bathroom", "furniture", "keycard"}, "ckp-27.jpg"},
 		},
 	}
 
@@ -387,7 +412,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 
 			// DO UPDATE เหมือนสาขาข้างบน เพื่อให้รัน seed ซ้ำแล้วได้ห้องตรงตามรายการนี้เสมอ
 			// ไม่แตะ status กับ image_url เพราะเป็นของที่แอดมินดูแลเองระหว่างใช้งานจริง
-			var roomID int64
+			var roomID types.RoomID
 			if err := tx.QueryRow(ctx,
 				`INSERT INTO rooms (branch_id, room_type_id, room_number, building, floor,
 				                    stay_type, price, water_rate, electric_rate, size_sqm)
@@ -421,6 +446,12 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 				roomID, rm.amenities); err != nil {
 				return fmt.Errorf("ผูกสิ่งอำนวยความสะดวกห้อง %s: %w", rm.number, err)
 			}
+
+			if imgs != nil && rm.cover != "" {
+				if err := imgs.setRoomCover(ctx, tx, roomID, branches[idx].slug, rm.cover); err != nil {
+					return err
+				}
+			}
 		}
 	}
 
@@ -432,18 +463,19 @@ func seed(ctx context.Context, pool *pgxpool.Pool, passwordHash string) error {
 		return fmt.Errorf("superadmin: %w", err)
 	}
 
-	adminSeeds := []struct{ email, first, last string }{
-		{"adminpracha@wisetsuk.com", "วิรัช", "มั่นคง"},
-		{"adminbangkae@wisetsuk.com", "ศิริพร", "แสงทอง"},
-		{"admincharoenkrung@wisetsuk.com", "สมหญิง", "งานดี"},
+	// เบอร์โทรเป็นเบอร์สมมุติสำหรับเดโม ไม่ใช่เบอร์ของใครจริง
+	adminSeeds := []struct{ email, first, last, phone string }{
+		{"adminpracha@wisetsuk.com", "วิรัช", "มั่นคง", "080-000-0001"},
+		{"adminbangkae@wisetsuk.com", "ศิริพร", "แสงทอง", "080-000-0002"},
+		{"admincharoenkrung@wisetsuk.com", "สมหญิง", "งานดี", "080-000-0003"},
 	}
 	// หนึ่งสาขามีผู้ดูแลคนเดียว — adminSeeds จึงจับคู่กับ branchIDs ทีละคู่ตามลำดับ
 	for i, a := range adminSeeds {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO users (email, password_hash, first_name, last_name, role, branch_id)
-			 VALUES ($1, $2, $3, $4, 'admin', $5)
+			`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, branch_id)
+			 VALUES ($1, $2, $3, $4, $5, 'admin', $6)
 			 ON CONFLICT (email) DO NOTHING`,
-			a.email, passwordHash, a.first, a.last, branchIDs[i]); err != nil {
+			a.email, passwordHash, a.first, a.last, a.phone, branchIDs[i]); err != nil {
 			return fmt.Errorf("admin %s: %w", a.email, err)
 		}
 	}

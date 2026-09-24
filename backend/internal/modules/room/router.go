@@ -35,6 +35,9 @@ func (m *Module) AdminRoutes(r gin.IRoutes) {
 	r.POST("/rooms", m.Handler.Create)
 	r.PUT("/rooms/:roomID", m.Handler.Update)
 	r.POST("/rooms/:roomID/image", m.Handler.UploadImage)
+	r.POST("/rooms/:roomID/images", m.Handler.AddGalleryImage)
+	r.POST("/rooms/:roomID/images/upload", m.Handler.UploadGalleryImage)
+	r.DELETE("/rooms/:roomID/images/:imageID", m.Handler.DeleteGalleryImage)
 	r.PATCH("/rooms/:roomID/status", m.Handler.UpdateStatus)
 	r.DELETE("/rooms/:roomID", m.Handler.Delete)
 }

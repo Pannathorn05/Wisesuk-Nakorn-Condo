@@ -114,7 +114,9 @@ type App struct {
 
 // NewApp ประกอบ router ตัวจริงของระบบบน database และโฟลเดอร์ไฟล์เฉพาะของเทสนี้
 // ใช้ routes.New เดียวกับที่ cmd/api ใช้ เทสจึงเจอ middleware ครบทุกชั้นเหมือนผู้ใช้จริง
-func NewApp(t *testing.T) App {
+//
+// opts ใช้ปรับ config เฉพาะเทสที่ต้องการ เช่นตั้ง TrustedProxies — เทสส่วนใหญ่ไม่ต้องส่ง
+func NewApp(t *testing.T, opts ...func(*config.Config)) App {
 	t.Helper()
 
 	pool := NewDatabase(t)
@@ -137,6 +139,9 @@ func NewApp(t *testing.T) App {
 		MaxUploadBytes:  5 << 20,
 		AllowedOrigins:  []string{"http://localhost:3000"},
 		BcryptCost:      bcrypt.MinCost,
+	}
+	for _, opt := range opts {
+		opt(cfg)
 	}
 
 	return App{

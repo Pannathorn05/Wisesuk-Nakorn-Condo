@@ -73,6 +73,8 @@ func (r *Repository) Search(ctx context.Context, p SearchParams) ([]Room, int, e
 		where = append(where, "r.price <= "+b.Bind(*p.MaxPrice))
 	}
 	if p.OnlyBookable {
+		// ปิดสาขา = ปิดทุกห้องในสาขาสำหรับฝั่งผู้ใช้ ส่วนแอดมิน (OnlyBookable=false) ยังเห็นครบ
+		where = append(where, "b.is_active")
 		where = append(where, "r.status = 'available'")
 		where = append(where, availabilityClause(b.Bind(p.CheckIn), b.Bind(p.CheckOut), b.Bind(p.MoveInDate)))
 	}
@@ -135,6 +137,65 @@ func (r *Repository) GetByID(ctx context.Context, id types.RoomID) (*Room, error
 	return scan(r.db.Executor(ctx).QueryRow(ctx, q, id))
 }
 
+// GetActiveByID ใช้กับหน้าสาธารณะ: ห้องที่ถูกลบ หรืออยู่ในสาขาที่ปิด ถือว่าไม่มีอยู่
+// ฝั่ง admin/booking ต้องใช้ GetByID ต่อ เพื่อให้ยังจัดการห้องที่ปิดไปแล้วได้
+func (r *Repository) GetActiveByID(ctx context.Context, id types.RoomID) (*Room, error) {
+	q := `SELECT ` + columns + joins + ` WHERE r.id = $1 AND r.is_active AND b.is_active`
+	return scan(r.db.Executor(ctx).QueryRow(ctx, q, id))
+}
+
+// ---------------------------------------------------------------- room images (แกลเลอรี)
+
+func (r *Repository) ListImages(ctx context.Context, roomID types.RoomID) ([]RoomImage, error) {
+	rows, err := r.db.Executor(ctx).Query(ctx,
+		`SELECT id, room_id, image_url, sort_order
+		 FROM room_images WHERE room_id = $1 ORDER BY sort_order, id`, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []RoomImage{}
+	for rows.Next() {
+		var img RoomImage
+		if err := rows.Scan(&img.ID, &img.RoomID, &img.ImageURL, &img.SortOrder); err != nil {
+			return nil, err
+		}
+		out = append(out, img)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) AddImage(ctx context.Context, roomID types.RoomID, url string, sortOrder int) (*RoomImage, error) {
+	var img RoomImage
+	err := r.db.Executor(ctx).QueryRow(ctx,
+		`INSERT INTO room_images (room_id, image_url, sort_order)
+		 VALUES ($1, $2, $3)
+		 RETURNING id, room_id, image_url, sort_order`,
+		roomID, url, sortOrder,
+	).Scan(&img.ID, &img.RoomID, &img.ImageURL, &img.SortOrder)
+	if err != nil {
+		return nil, database.NormalizeErr(err)
+	}
+	return &img, nil
+}
+
+// DeleteImage ผูกเงื่อนไขกับสาขาของห้องเจ้าของรูป เพื่อกันแอดมินสาขาหนึ่งลบรูปของอีกสาขา
+// แม้จะเดา id ถูกก็ตาม — เช็คที่ SQL ไม่ใช่แค่ในโค้ด
+func (r *Repository) DeleteImage(ctx context.Context, branchID types.BranchID, imageID types.RoomImageID) error {
+	tag, err := r.db.Executor(ctx).Exec(ctx,
+		`DELETE FROM room_images ri
+		 USING rooms r
+		 WHERE ri.id = $1 AND ri.room_id = r.id AND r.branch_id = $2`, imageID, branchID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return database.ErrNotFound
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------- room amenities
 
 func (r *Repository) ListAmenities(ctx context.Context, roomID types.RoomID) ([]Amenity, error) {
@@ -156,6 +217,38 @@ func (r *Repository) ListAmenities(ctx context.Context, roomID types.RoomID) ([]
 			return nil, err
 		}
 		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ListAmenitiesForRooms ดึงสิ่งอำนวยความสะดวกของหลายห้องในคำสั่งเดียว ไม่ใช่ยิงทีละห้อง
+// เพราะผลค้นหาคืนมาทั้งหน้า การวนเรียก ListAmenities จะกลายเป็น N+1 query ทันที
+//
+// คืน map ที่มีคีย์เฉพาะห้องที่ผูกของไว้จริง ห้องที่ไม่มีจะไม่มีคีย์ (อ่านออกมาได้ nil ตามปกติ)
+func (r *Repository) ListAmenitiesForRooms(ctx context.Context, roomIDs []types.RoomID) (map[types.RoomID][]Amenity, error) {
+	out := map[types.RoomID][]Amenity{}
+	if len(roomIDs) == 0 {
+		return out, nil
+	}
+
+	rows, err := r.db.Executor(ctx).Query(ctx,
+		`SELECT ra.room_id, a.id, a.code, a.name, a.icon, a.sort_order
+		 FROM amenities a
+		 JOIN room_amenities ra ON ra.amenity_id = a.id
+		 WHERE ra.room_id = ANY($1::bigint[])
+		 ORDER BY ra.room_id, a.sort_order, a.name`, roomIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var roomID types.RoomID
+		var a Amenity
+		if err := rows.Scan(&roomID, &a.ID, &a.Code, &a.Name, &a.Icon, &a.SortOrder); err != nil {
+			return nil, err
+		}
+		out[roomID] = append(out[roomID], a)
 	}
 	return out, rows.Err()
 }

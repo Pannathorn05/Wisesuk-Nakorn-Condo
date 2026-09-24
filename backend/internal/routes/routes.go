@@ -29,8 +29,12 @@ func New(s *server.Server) http.Handler {
 	// ที่เขียน log ผ่าน slog และตอบ error เป็น JSON รูปแบบเดียวกับทั้งระบบ
 	r := gin.New()
 
-	// ไม่ให้ gin ตีความ proxy header เอง — middleware.ClientIP อ่าน X-Forwarded-For เองอยู่แล้ว
-	_ = r.SetTrustedProxies(nil)
+	// เชื่อ X-Forwarded-For / X-Real-IP เฉพาะคำขอที่มาจาก proxy ใน TRUSTED_PROXIES
+	// ไม่ตั้ง = ไม่มี proxy ใด ๆ ถูกเชื่อ header จึงปลอม IP ไม่ได้ (ดู middleware.ClientIP)
+	// ค่าถูกตรวจรูปแบบแล้วใน config.Load จึงไม่ควรพังตรงนี้ ถ้าพังให้ตายตั้งแต่ตอนสร้าง router
+	if err := r.SetTrustedProxies(s.Config.TrustedProxies); err != nil {
+		panic("routes: TRUSTED_PROXIES ไม่ถูกต้อง: " + err.Error())
+	}
 	r.HandleMethodNotAllowed = true
 
 	r.Use(mw.RequestID())
@@ -77,7 +81,7 @@ func New(s *server.Server) http.Handler {
 
 	// ============================================ ต้องเข้าสู่ระบบ
 	authed := v1.Group("")
-	authed.Use(mw.Authenticate(s.Auth))
+	authed.Use(mw.Authenticate(s.Auth, s.Account.Service))
 
 	s.Account.AuthedRoutes(authed)
 	s.Booking.SharedRoutes(authed)

@@ -36,19 +36,22 @@ func (s *Service) List(ctx context.Context, includeInactive bool) ([]Branch, err
 	return branches, nil
 }
 
+// Get ไม่กรองสาขาที่ปิด — ใช้ฝั่ง admin คืนรายละเอียดหลังแก้ไข
 func (s *Service) Get(ctx context.Context, id types.BranchID) (*Branch, error) {
-	b, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, access.MapErr(err)
-	}
-	if err := s.repo.LoadRelations(ctx, b); err != nil {
-		return nil, access.MapErr(err)
-	}
-	return b, nil
+	return s.withRelations(ctx, func() (*Branch, error) { return s.repo.GetByID(ctx, id) })
 }
 
-func (s *Service) GetBySlug(ctx context.Context, slug string) (*Branch, error) {
-	b, err := s.repo.GetBySlug(ctx, slug)
+// GetPublic / GetPublicBySlug คือหน้ารายละเอียดสาขาฝั่งสาธารณะ — สาขาที่ปิดใช้งานได้ 404
+func (s *Service) GetPublic(ctx context.Context, id types.BranchID) (*Branch, error) {
+	return s.withRelations(ctx, func() (*Branch, error) { return s.repo.GetActiveByID(ctx, id) })
+}
+
+func (s *Service) GetPublicBySlug(ctx context.Context, slug string) (*Branch, error) {
+	return s.withRelations(ctx, func() (*Branch, error) { return s.repo.GetActiveBySlug(ctx, slug) })
+}
+
+func (s *Service) withRelations(ctx context.Context, load func() (*Branch, error)) (*Branch, error) {
+	b, err := load()
 	if err != nil {
 		return nil, access.MapErr(err)
 	}

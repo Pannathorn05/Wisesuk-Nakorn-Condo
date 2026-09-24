@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -99,12 +100,28 @@ type LoginInput struct {
 	Password string `json:"password"`
 }
 
+// เพดานของ rate limit ที่ POST /auth/login (AC-2)
+//
+// นับสองชั้น: รายคู่ (อีเมล, IP) กัน brute force บัญชีเดียว และราย IP กันการไล่เดาหลายบัญชี
+// ไม่นับรายอีเมลอย่างเดียว เพราะจะเปิดช่องให้คนอื่นล็อกบัญชีเหยื่อจากเครื่องตัวเองได้
+const (
+	loginWindow              = 15 * time.Minute
+	maxLoginFailuresPerEmail = 5
+	maxLoginFailuresPerIP    = 20
+)
+
 func (s *Service) Login(ctx context.Context, in LoginInput, ip string) (*TokenPair, error) {
+	// ตรวจเพดานก่อนแตะบัญชีใด ๆ — ถูกจำกัดแล้วต้องได้ 429 เหมือนกันทั้งอีเมลที่มีและไม่มี
+	// และแม้รหัสผ่านที่ส่งมาจะถูก ไม่งั้นผู้โจมตีรู้ได้ทันทีว่าเดาถูกแล้ว
+	if err := s.checkLoginLimit(ctx, in.Email, ip); err != nil {
+		return nil, err
+	}
+
 	user, err := s.repo.GetByEmail(ctx, in.Email)
 	if err != nil {
 		if errors.Is(err, database.ErrNotFound) {
 			s.security.DummyVerify(in.Password)
-			return nil, errInvalidCredentials
+			return nil, s.loginFailed(ctx, in.Email, ip)
 		}
 		return nil, access.MapErr(err)
 	}
@@ -113,18 +130,51 @@ func (s *Service) Login(ctx context.Context, in LoginInput, ip string) (*TokenPa
 	// จนกว่าจะตั้งรหัสผ่านของตัวเอง เช็คตรงนี้ให้ชัดแทนที่จะพึ่งว่า bcrypt จะตกเอง
 	if user.PasswordHash == "" {
 		s.security.DummyVerify(in.Password)
-		return nil, errInvalidCredentials
+		return nil, s.loginFailed(ctx, in.Email, ip)
 	}
 	if !s.security.VerifyPassword(user.PasswordHash, in.Password) {
-		return nil, errInvalidCredentials
+		return nil, s.loginFailed(ctx, in.Email, ip)
 	}
 	if !user.IsActive {
 		return nil, httpx.ErrAccountDisabled
 	}
 
+	_ = s.repo.ClearLoginFailures(ctx, in.Email, ip)
 	_ = s.repo.TouchLastLogin(ctx, user.ID)
 	s.record(ctx, identityOf(user), "auth.login", "user", user.ID.String(), nil, ip)
 	return s.issueTokens(ctx, user)
+}
+
+// checkLoginLimit คืน 429 เมื่อคู่ (อีเมล, IP) หรือ IP นี้ล้มเหลวครบเพดานในหน้าต่างเวลา
+func (s *Service) checkLoginLimit(ctx context.Context, email, ip string) error {
+	f, err := s.repo.CountLoginFailures(ctx, email, ip, loginWindow)
+	if err != nil {
+		return access.MapErr(err)
+	}
+
+	// Retry-After = เวลาจนความล้มเหลวครั้งเก่าสุดหลุดหน้าต่าง ตัวนับจึงลดต่ำกว่าเพดาน
+	// ถ้าติดทั้งสองชั้น ต้องรอชั้นที่นานกว่า
+	limited, retry := false, 0
+	if f.ForEmail >= maxLoginFailuresPerEmail {
+		limited, retry = true, f.ForEmailRetry
+	}
+	if f.ForIP >= maxLoginFailuresPerIP {
+		limited, retry = true, max(retry, f.ForIPRetry)
+	}
+	if !limited {
+		return nil
+	}
+
+	minutes := (max(retry, 1) + 59) / 60
+	return httpx.TooManyRequests(
+		"เข้าสู่ระบบผิดหลายครั้งเกินไป กรุณาลองใหม่ใน "+strconv.Itoa(minutes)+" นาที", retry)
+}
+
+// loginFailed บันทึกความล้มเหลวแล้วคืน invalid_credentials
+// บันทึกไม่สำเร็จไม่ทำให้คำตอบเปลี่ยน — ผู้ใช้ต้องได้ข้อความเดิมเสมอ
+func (s *Service) loginFailed(ctx context.Context, email, ip string) error {
+	_ = s.repo.RecordLoginFailure(ctx, email, ip, loginWindow)
+	return errInvalidCredentials
 }
 
 // Refresh หมุน refresh token: ใบเดิมถูกเพิกถอนทันทีและออกใบใหม่แทน
@@ -307,6 +357,22 @@ func oauthName(name, email string) string {
 }
 
 // ---------------------------------------------------------------- profile
+
+// CurrentIdentity ทำให้ Service ใช้เป็น middleware.Accounts ได้ — ถูกเรียกทุกคำขอที่มี token
+// GetByID กรองบัญชีที่ถูก soft delete ออกให้แล้ว ส่วนบัญชีที่ถูกระงับกรองตรงนี้
+func (s *Service) CurrentIdentity(ctx context.Context, id types.UserID) (middleware.Identity, bool, error) {
+	user, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, database.ErrNotFound) {
+		return middleware.Identity{}, false, nil
+	}
+	if err != nil {
+		return middleware.Identity{}, false, err
+	}
+	if !user.IsActive {
+		return middleware.Identity{}, false, nil
+	}
+	return identityOf(user), true, nil
+}
 
 func (s *Service) Me(ctx context.Context, userID types.UserID) (*User, error) {
 	user, err := s.repo.GetByID(ctx, userID)

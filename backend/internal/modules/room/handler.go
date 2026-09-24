@@ -1,6 +1,8 @@
 package room
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 
 	"backend/internal/httpx"
@@ -42,6 +44,104 @@ func (h *Handler) UploadImage(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, rm)
+}
+
+// POST /api/v1/admin/rooms/:roomID/images/upload — multipart: image, sort_order
+//
+// อัปโหลดรูปเข้าแกลเลอรีของห้อง ตัวไฟล์ถูกเก็บลงตาราง assets แล้วบันทึกเป็น URL /files/:id
+// คนละช่องกับรูปปก ซึ่งใช้ POST /admin/rooms/:roomID/image (เอกพจน์)
+func (h *Handler) UploadGalleryImage(c *gin.Context) {
+	identity := middleware.MustIdentity(c)
+
+	roomID, err := httpx.ParseID[types.Room](c.Param("roomID"))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	// ต้องบันทึกไฟล์ก่อน เพราะเป็นจุดที่พาร์ส multipart ให้อ่านฟิลด์ข้อความต่อได้
+	url, err := h.files.SaveFromRequest(c, "image")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	sortOrder, err := formInt(c, "sort_order")
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	img, err := h.svc.AddImage(c.Request.Context(), identity, roomID, url, sortOrder, middleware.ClientIP(c))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	httpx.Created(c, img)
+}
+
+// POST /api/v1/admin/rooms/:roomID/images — JSON: image_url, sort_order
+//
+// ใช้ผูกรูปที่โฮสต์ไว้ที่อื่นอยู่แล้ว ถ้าจะอัปโหลดไฟล์ให้ใช้ /images/upload
+func (h *Handler) AddGalleryImage(c *gin.Context) {
+	identity := middleware.MustIdentity(c)
+
+	roomID, err := httpx.ParseID[types.Room](c.Param("roomID"))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	var in struct {
+		ImageURL  string `json:"image_url"`
+		SortOrder int    `json:"sort_order"`
+	}
+	if err := httpx.DecodeJSON(c, &in); err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	img, err := h.svc.AddImage(c.Request.Context(), identity, roomID, in.ImageURL, in.SortOrder, middleware.ClientIP(c))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	httpx.Created(c, img)
+}
+
+// DELETE /api/v1/admin/rooms/:roomID/images/:imageID
+func (h *Handler) DeleteGalleryImage(c *gin.Context) {
+	identity := middleware.MustIdentity(c)
+
+	roomID, err := httpx.ParseID[types.Room](c.Param("roomID"))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	imageID, err := httpx.ParseID[types.RoomImage](c.Param("imageID"))
+	if err != nil {
+		httpx.Error(c, err)
+		return
+	}
+
+	if err := h.svc.DeleteImage(c.Request.Context(), identity, roomID, imageID, middleware.ClientIP(c)); err != nil {
+		httpx.Error(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+// formInt อ่านฟิลด์ตัวเลขจาก multipart form — ไม่ส่งมาถือว่าเป็น 0
+func formInt(c *gin.Context, field string) (int, error) {
+	raw := c.PostForm(field)
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, httpx.BadRequest(field + " ต้องเป็นจำนวนเต็ม")
+	}
+	return n, nil
 }
 
 // searchInputFrom อ่านตัวกรองทั้งหมดของหน้าค้นหาห้องพักจาก query string

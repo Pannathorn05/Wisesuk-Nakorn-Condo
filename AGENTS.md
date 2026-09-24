@@ -47,5 +47,5 @@
 - Query DB:              cd backend && docker compose exec -T db psql -U wisetsuk -d wisetsuk -c "SELECT ..."
 - **ห้ามรันเอง**: `docker compose down -v` ลบข้อมูลทั้งหมด ต้องถามก่อน
 
-บัญชีทดสอบ: `super@wisetsuk.com` · `admin.1@wisetsuk.com` (ประชาอุทิศ 45) · `admin.2` (บางแค) · `admin.3` (เจริญกรุงเพลส) — รหัสผ่านอยู่ที่ `SEED_DEFAULT_PASSWORD` ใน `.env`
+บัญชีทดสอบ: `super@wisetsuk.com` · `adminpracha@wisetsuk.com` (ประชาอุทิศ 45) · `adminbangkae@wisetsuk.com` (บางแค) · `admincharoenkrung@wisetsuk.com` (เจริญกรุงเพลส) — รหัสผ่านอยู่ที่ `SEED_DEFAULT_PASSWORD` ใน `.env`
 

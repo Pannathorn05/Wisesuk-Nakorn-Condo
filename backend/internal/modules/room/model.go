@@ -62,9 +62,19 @@ type Room struct {
 	ImageURL     string            `json:"image_url"`
 	Status       RoomStatus        `json:"status"`
 	IsActive     bool              `json:"is_active"`
-	Amenities    []Amenity         `json:"amenities,omitempty"` // เติมเฉพาะตอนดึงห้องรายตัว
+	Amenities    []Amenity         `json:"amenities,omitempty"` // เติมตอนดึงห้องรายตัวและตอนค้นหา ไม่เติมในรายการฝั่งแอดมิน
+	Images       []RoomImage       `json:"images,omitempty"`    // แกลเลอรี เติมเฉพาะตอนดึงห้องรายตัว ผลค้นหาใช้แค่ image_url
 	CreatedAt    time.Time         `json:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at"`
+}
+
+// RoomImage คือรูปในแกลเลอรีของห้อง แยกจาก Room.ImageURL ที่เป็นรูปปกรูปเดียว
+// ไม่มี caption ต่างจาก BranchImage เพราะรูปในห้องเดียวกันคือห้องนั้นทั้งหมด ต่างแค่มุมกล้อง
+type RoomImage struct {
+	ID        types.RoomImageID `json:"id"`
+	RoomID    types.RoomID      `json:"room_id"`
+	ImageURL  string            `json:"image_url"`
+	SortOrder int               `json:"sort_order"`
 }
 
 // BranchStats คือตัวเลขห้องว่างที่แสดงบนแดชบอร์ด

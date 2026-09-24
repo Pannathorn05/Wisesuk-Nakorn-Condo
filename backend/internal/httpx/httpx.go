@@ -22,7 +22,9 @@ type APIError struct {
 	Code    string            `json:"code"`
 	Message string            `json:"message"`
 	Fields  map[string]string `json:"fields,omitempty"`
-	wrapped error
+	// RetryAfter (วินาที) > 0 จะถูกส่งเป็น header Retry-After — ใช้คู่กับ 429
+	RetryAfter int `json:"-"`
+	wrapped    error
 }
 
 func (e *APIError) Error() string {
@@ -44,7 +46,7 @@ func NewError(status int, code, message string) *APIError {
 	return &APIError{Status: status, Code: code, Message: message}
 }
 
-// รหัส error ทั้ง 12 ตัวที่ SPEC อนุญาต ห้ามมีรหัสอื่นหลุดออกไปหา client
+// รหัส error ทั้ง 13 ตัวที่ SPEC อนุญาต (AC-21) ห้ามมีรหัสอื่นหลุดออกไปหา client
 const (
 	CodeUnauthorized       = "unauthorized"
 	CodeForbidden          = "forbidden"
@@ -58,6 +60,7 @@ const (
 	CodeAccountDisabled    = "account_disabled"
 	CodeRoomUnavailable    = "room_unavailable"
 	CodeInvalidState       = "invalid_state"
+	CodeTooManyRequests    = "too_many_requests"
 )
 
 // ข้อความภาษาไทยที่ผู้ใช้เห็นของ error กลางทุกตัวอยู่ที่นี่ที่เดียว
@@ -100,6 +103,18 @@ func BadRequest(message string) *APIError {
 // รับข้อความมาเพราะเหตุผลต่างกันไปตามเรื่อง ผู้ใช้ต้องรู้ว่าติดตรงไหน
 func InvalidState(message string) *APIError {
 	return NewError(http.StatusConflict, CodeInvalidState, message)
+}
+
+// TooManyRequests ใช้เมื่อผู้เรียกทำรายการถี่เกินกำหนด retryAfter คือวินาทีที่ต้องรอ
+// รับข้อความมาเพราะแต่ละเรื่องบอกผู้ใช้ต่างกัน (เช่น "เข้าสู่ระบบผิดหลายครั้งเกินไป")
+func TooManyRequests(message string, retryAfter int) *APIError {
+	if retryAfter < 1 {
+		retryAfter = 1
+	}
+	return &APIError{
+		Status: http.StatusTooManyRequests, Code: CodeTooManyRequests,
+		Message: message, RetryAfter: retryAfter,
+	}
 }
 
 func ValidationFailed(fields map[string]string) *APIError {
@@ -160,6 +175,9 @@ func Error(c *gin.Context, err error) {
 			"method", c.Request.Method, "path", c.Request.URL.Path, "error", err.Error())
 		c.AbortWithStatusJSON(apiErr.Status, gin.H{"error": ErrInternal})
 		return
+	}
+	if apiErr.RetryAfter > 0 {
+		c.Header("Retry-After", strconv.Itoa(apiErr.RetryAfter))
 	}
 	c.AbortWithStatusJSON(apiErr.Status, gin.H{"error": apiErr})
 }

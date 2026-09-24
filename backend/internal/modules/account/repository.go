@@ -371,6 +371,57 @@ func (r *Repository) ConsumeOAuthCode(ctx context.Context, codeHash string) (typ
 	return userID, nil
 }
 
+// ---------------------------------------------------------------- login rate limit
+
+// LoginFailures คือจำนวนครั้งที่ login ล้มเหลวจาก IP หนึ่งภายในหน้าต่างเวลา
+// พร้อมจำนวนวินาทีที่ความล้มเหลวครั้งเก่าสุดจะหลุดจากหน้าต่าง (ใช้ตอบ Retry-After)
+type LoginFailures struct {
+	ForEmail      int
+	ForEmailRetry int
+	ForIP         int
+	ForIPRetry    int
+}
+
+// CountLoginFailures นับความล้มเหลวจาก ip ภายใน window วินาที — ทั้งหมด และเฉพาะอีเมลนี้
+// ใช้ query เดียวเพราะตัวนับรายคู่ (อีเมล, IP) เป็นส่วนย่อยของตัวนับราย IP อยู่แล้ว
+// เวลาทั้งหมดคำนวณที่ DB จึงไม่ขึ้นกับนาฬิกาของเครื่องที่รัน API
+func (r *Repository) CountLoginFailures(ctx context.Context, email, ip string, window time.Duration) (LoginFailures, error) {
+	const q = `
+		SELECT
+			count(*) FILTER (WHERE email = $1),
+			COALESCE(ceil(extract(epoch FROM
+				min(created_at) FILTER (WHERE email = $1) + make_interval(secs => $3) - now())), 0)::int,
+			count(*),
+			COALESCE(ceil(extract(epoch FROM min(created_at) + make_interval(secs => $3) - now())), 0)::int
+		FROM login_attempts
+		WHERE ip = $2 AND created_at > now() - make_interval(secs => $3)`
+	var f LoginFailures
+	err := r.db.Executor(ctx).QueryRow(ctx, q, normalizeEmail(email), ip, window.Seconds()).
+		Scan(&f.ForEmail, &f.ForEmailRetry, &f.ForIP, &f.ForIPRetry)
+	return f, err
+}
+
+// RecordLoginFailure บันทึกความล้มเหลวหนึ่งครั้ง แล้วลบแถวที่หลุดหน้าต่างไปแล้วทิ้ง
+// ตารางจึงเก็บแค่ข้อมูลของ window ล่าสุด ไม่โตไปเรื่อย ๆ
+func (r *Repository) RecordLoginFailure(ctx context.Context, email, ip string, window time.Duration) error {
+	exec := r.db.Executor(ctx)
+	if _, err := exec.Exec(ctx,
+		`INSERT INTO login_attempts (email, ip) VALUES ($1, $2)`, normalizeEmail(email), ip); err != nil {
+		return err
+	}
+	_, err := exec.Exec(ctx,
+		`DELETE FROM login_attempts WHERE created_at < now() - make_interval(secs => $1)`, window.Seconds())
+	return err
+}
+
+// ClearLoginFailures ล้างความล้มเหลวของคู่ (อีเมล, IP) หลัง login สำเร็จ
+// ตัวนับราย IP ของอีเมลอื่นยังอยู่ — สำเร็จกับบัญชีตัวเองไม่ได้ลบร่องรอยการไล่เดาบัญชีอื่น
+func (r *Repository) ClearLoginFailures(ctx context.Context, email, ip string) error {
+	_, err := r.db.Executor(ctx).Exec(ctx,
+		`DELETE FROM login_attempts WHERE email = $1 AND ip = $2`, normalizeEmail(email), ip)
+	return err
+}
+
 // ---------------------------------------------------------------- helpers
 
 func normalizeEmail(s string) string { return strings.ToLower(strings.TrimSpace(s)) }

@@ -45,7 +45,7 @@ var specErrorCodes = map[string]bool{
 	"unauthorized": true, "forbidden": true, "not_found": true, "conflict": true,
 	"bad_request": true, "validation_failed": true, "method_not_allowed": true,
 	"internal_error": true, "invalid_credentials": true, "account_disabled": true,
-	"room_unavailable": true, "invalid_state": true,
+	"room_unavailable": true, "invalid_state": true, "too_many_requests": true,
 }
 
 func TestMain(m *testing.M) {
@@ -381,6 +381,7 @@ func TestAC21_HelpersMatchSpec(t *testing.T) {
 		{"NotFound", httpx.ErrNotFound, http.StatusNotFound, "not_found"},
 		{"Conflict", httpx.ErrConflict, http.StatusConflict, "conflict"},
 		{"Internal", httpx.ErrInternal, http.StatusInternalServerError, "internal_error"},
+		{"TooManyRequests", httpx.TooManyRequests("ข้อความ", 90), http.StatusTooManyRequests, "too_many_requests"},
 	}
 
 	for _, tc := range cases {
@@ -392,7 +393,7 @@ func TestAC21_HelpersMatchSpec(t *testing.T) {
 				t.Errorf("code = %q ต้องการ %q", tc.err.Code, tc.wantCode)
 			}
 			if !specErrorCodes[tc.err.Code] {
-				t.Errorf("code %q ไม่อยู่ในรายการ 12 code ของ SPEC", tc.err.Code)
+				t.Errorf("code %q ไม่อยู่ในรายการ code ของ SPEC", tc.err.Code)
 			}
 		})
 	}

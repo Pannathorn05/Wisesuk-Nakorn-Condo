@@ -32,6 +32,7 @@ func (h *Handler) List(c *gin.Context) {
 
 // GET /api/v1/branches/:branchID — พร้อมรูป/สิ่งอำนวยความสะดวก/สถานที่ใกล้เคียง
 // รับได้ทั้ง id ที่เป็นตัวเลข และ slug (เช่น prachauthit-45) เพื่อให้ URL ของหน้าเว็บอ่านรู้เรื่อง
+// สาขาที่ปิดใช้งานตอบ 404 ทั้งสองทาง
 func (h *Handler) Get(c *gin.Context) {
 	param := c.Param("branchID")
 
@@ -40,9 +41,9 @@ func (h *Handler) Get(c *gin.Context) {
 		err error
 	)
 	if id, parseErr := types.ParseID[types.Branch](param); parseErr == nil {
-		b, err = h.svc.Get(c.Request.Context(), id)
+		b, err = h.svc.GetPublic(c.Request.Context(), id)
 	} else {
-		b, err = h.svc.GetBySlug(c.Request.Context(), param)
+		b, err = h.svc.GetPublicBySlug(c.Request.Context(), param)
 	}
 	if err != nil {
 		httpx.Error(c, err)

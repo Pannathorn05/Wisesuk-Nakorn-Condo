@@ -34,6 +34,7 @@ type (
 	User         struct{}
 	RoomType     struct{}
 	Room         struct{}
+	RoomImage    struct{}
 	Booking      struct{}
 	Payment      struct{}
 	Notification struct{}
@@ -48,6 +49,7 @@ func (NearbyPlace) IDPrefix() string  { return "np" }
 func (User) IDPrefix() string         { return "usr" }
 func (RoomType) IDPrefix() string     { return "rmt" }
 func (Room) IDPrefix() string         { return "rm" }
+func (RoomImage) IDPrefix() string    { return "rimg" }
 func (Booking) IDPrefix() string      { return "bkg" }
 func (Payment) IDPrefix() string      { return "pay" }
 func (Notification) IDPrefix() string { return "ntf" }
@@ -63,6 +65,7 @@ type (
 	UserID         = ID[User]
 	RoomTypeID     = ID[RoomType]
 	RoomID         = ID[Room]
+	RoomImageID    = ID[RoomImage]
 	BookingID      = ID[Booking]
 	PaymentID      = ID[Payment]
 	NotificationID = ID[Notification]

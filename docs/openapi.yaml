@@ -160,6 +160,23 @@ paths:
                 error:
                   code: account_disabled
                   message: บัญชีนี้ถูกปิดใช้งาน
+        '429':
+          description: >
+            เข้าสู่ระบบผิดเกินกำหนดใน 15 นาที — 5 ครั้งต่อคู่ (อีเมล, IP) หรือ 20 ครั้งต่อ IP
+            ตอบเหมือนกันไม่ว่าอีเมลจะมีบัญชีหรือไม่ และตอบแม้รหัสผ่านที่ส่งมาจะถูกต้อง
+          headers:
+            Retry-After:
+              description: จำนวนวินาทีที่ต้องรอก่อนลองใหม่
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: too_many_requests
+                  message: เข้าสู่ระบบผิดหลายครั้งเกินไป กรุณาลองใหม่ใน 15 นาที
 
   /api/v1/auth/refresh:
     post:
@@ -283,6 +300,7 @@ paths:
     get:
       tags: [guest]
       summary: รายละเอียดสาขาพร้อมรูป สิ่งอำนวยความสะดวก และสถานที่ใกล้เคียง
+      description: สาขาที่ปิดใช้งานตอบ 404 (ทั้งเรียกด้วย id และ slug)
       operationId: getBranch
       security: []
       parameters:
@@ -342,6 +360,7 @@ paths:
     get:
       tags: [guest]
       summary: ค้นหาห้องว่าง
+      description: ไม่คืนห้องที่ถูกลบ หรืออยู่ในสาขาที่ปิดใช้งาน
       operationId: searchRooms
       security: []
       parameters:
@@ -406,6 +425,7 @@ paths:
     get:
       tags: [guest]
       summary: รายละเอียดห้อง
+      description: ห้องที่ถูกลบ หรืออยู่ในสาขาที่ปิดใช้งาน ตอบ 404
       operationId: getRoom
       security: []
       parameters:
@@ -1131,6 +1151,105 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/admin/rooms/{roomID}/images:
+    post:
+      tags: [admin]
+      summary: เพิ่มรูปเข้าแกลเลอรีของห้องด้วย URL ที่โฮสต์ไว้ที่อื่น
+      description: >-
+        แกลเลอรีเป็นคนละช่องกับรูปปก — รูปปกใช้ POST /admin/rooms/{roomID}/image (เอกพจน์)
+        และเก็บได้รูปเดียว ส่วนแกลเลอรีเก็บได้หลายรูป เรียงด้วย sort_order
+      operationId: addRoomImage
+      parameters:
+        - $ref: '#/components/parameters/RoomIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_url]
+              properties:
+                image_url:
+                  type: string
+                  format: uri
+                sort_order:
+                  type: integer
+                  default: 0
+      responses:
+        '201':
+          description: เพิ่มรูปสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomImage'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/rooms/{roomID}/images/upload:
+    post:
+      tags: [admin]
+      summary: อัปโหลดไฟล์เข้าแกลเลอรีของห้อง (เก็บไฟล์ไว้ในฐานข้อมูล)
+      operationId: uploadRoomGalleryImage
+      parameters:
+        - $ref: '#/components/parameters/RoomIDPath'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: JPG, PNG หรือ WEBP ขนาดไม่เกิน MAX_UPLOAD_MB
+                sort_order:
+                  type: integer
+                  default: 0
+      responses:
+        '201':
+          description: อัปโหลดสำเร็จ คืนรูปที่ image_url ชี้ไปยัง /files/{assetID}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomImage'
+        '400':
+          description: ไม่ได้แนบไฟล์ ไฟล์ใหญ่เกินไป หรือไม่ใช่ไฟล์รูป
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/rooms/{roomID}/images/{imageID}:
+    delete:
+      tags: [admin]
+      summary: ลบรูปออกจากแกลเลอรีของห้อง
+      operationId: deleteRoomImage
+      parameters:
+        - $ref: '#/components/parameters/RoomIDPath'
+        - name: imageID
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^rimg-[0-9]+$"
+      responses:
+        '204':
+          description: ลบแล้ว
+        '403':
+          $ref: '#/components/responses/ForbiddenCrossBranch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/admin/rooms/{roomID}/status:
     patch:
       tags: [admin]
@@ -1668,6 +1787,7 @@ components:
         - account_disabled
         - room_unavailable
         - invalid_state
+        - too_many_requests
 
     ErrorResponse:
       type: object
@@ -1967,6 +2087,25 @@ components:
         sort_order:
           type: integer
 
+    RoomImage:
+      type: object
+      required: [id, room_id, image_url, sort_order]
+      description: >-
+        รูปในแกลเลอรีของห้อง แยกจาก Room.image_url ที่เป็นรูปปกรูปเดียว
+        ไม่มี caption ต่างจาก BranchImage เพราะรูปในห้องเดียวกันต่างกันแค่มุมกล้อง
+      properties:
+        id:
+          type: string
+          pattern: "^rimg-[0-9]+$"
+        room_id:
+          type: string
+          pattern: "^rm-[0-9]+$"
+        image_url:
+          type: string
+          format: uri
+        sort_order:
+          type: integer
+
     NearbyPlaceInput:
       type: object
       required: [name]
@@ -2107,9 +2246,18 @@ components:
           nullable: true
         amenities:
           type: array
-          description: สิ่งอำนวยความสะดวกของห้องนี้ คืนเฉพาะ GET /rooms/{id} เท่านั้น
+          description: >-
+            สิ่งอำนวยความสะดวกของห้องนี้ คืนใน GET /rooms/{id} และ GET /rooms/search
+            ไม่คืนใน GET /admin/rooms (หน้าจัดการห้องไม่ได้ใช้)
           items:
             $ref: '#/components/schemas/Amenity'
+        images:
+          type: array
+          description: >-
+            แกลเลอรีรูปห้อง คืนเฉพาะ GET /rooms/{id} เท่านั้น
+            ผลค้นหาใช้แค่ image_url ที่เป็นรูปปก
+          items:
+            $ref: '#/components/schemas/RoomImage'
         created_at:
           type: string
           format: date-time

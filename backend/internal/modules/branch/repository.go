@@ -57,8 +57,15 @@ func (r *Repository) GetByID(ctx context.Context, id types.BranchID) (*Branch, e
 	return scan(r.db.Executor(ctx).QueryRow(ctx, q, id))
 }
 
-func (r *Repository) GetBySlug(ctx context.Context, slug string) (*Branch, error) {
-	q := `SELECT ` + columns + ` FROM branches WHERE slug = $1`
+// GetActiveByID / GetActiveBySlug ใช้กับหน้าสาธารณะ: สาขาที่ปิดใช้งานถือว่าไม่มีอยู่
+// ฝั่ง admin ต้องใช้ GetByID ต่อ เพื่อให้แอดมินยังแก้สาขาที่ปิดอยู่ได้
+func (r *Repository) GetActiveByID(ctx context.Context, id types.BranchID) (*Branch, error) {
+	q := `SELECT ` + columns + ` FROM branches WHERE id = $1 AND is_active`
+	return scan(r.db.Executor(ctx).QueryRow(ctx, q, id))
+}
+
+func (r *Repository) GetActiveBySlug(ctx context.Context, slug string) (*Branch, error) {
+	q := `SELECT ` + columns + ` FROM branches WHERE slug = $1 AND is_active`
 	return scan(r.db.Executor(ctx).QueryRow(ctx, q, slug))
 }
 

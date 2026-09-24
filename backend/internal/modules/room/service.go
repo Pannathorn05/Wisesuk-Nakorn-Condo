@@ -53,12 +53,42 @@ func (s *Service) Search(ctx context.Context, in SearchInput) ([]Room, int, erro
 		OnlyBookable: true,
 		Limit:        in.Limit, Offset: in.Offset,
 	})
-	return rooms, total, access.MapErr(err)
+	if err != nil {
+		return nil, 0, access.MapErr(err)
+	}
+	if err := s.attachAmenities(ctx, rooms); err != nil {
+		return nil, 0, err
+	}
+	return rooms, total, nil
 }
 
-// Get คือหน้ารายละเอียดห้อง — เป็นที่เดียวที่คืนสิ่งอำนวยความสะดวกของห้องมาด้วย
+// attachAmenities เติมสิ่งอำนวยความสะดวกให้ห้องทั้งชุดด้วย query เดียว
+//
+// การ์ดในหน้าค้นหาต้องโชว์ของจริงของห้องนั้น ก่อนหน้านี้ endpoint ไม่ส่งมา หน้าเว็บเลยต้อง
+// fallback ไปใช้ amenities ของสาขา ทำให้ห้องที่ไม่มีแอร์/เตียงถูกแสดงว่ามี
+func (s *Service) attachAmenities(ctx context.Context, rooms []Room) error {
+	if len(rooms) == 0 {
+		return nil
+	}
+
+	ids := make([]types.RoomID, 0, len(rooms))
+	for _, rm := range rooms {
+		ids = append(ids, rm.ID)
+	}
+
+	byRoom, err := s.repo.ListAmenitiesForRooms(ctx, ids)
+	if err != nil {
+		return access.MapErr(err)
+	}
+	for i := range rooms {
+		rooms[i].Amenities = byRoom[rooms[i].ID]
+	}
+	return nil
+}
+
+// Get คือหน้ารายละเอียดห้องฝั่งสาธารณะ — ห้องที่ปิดหรืออยู่ในสาขาที่ปิดได้ 404
 func (s *Service) Get(ctx context.Context, id types.RoomID) (*Room, error) {
-	rm, err := s.repo.GetByID(ctx, id)
+	rm, err := s.repo.GetActiveByID(ctx, id)
 	if err != nil {
 		return nil, access.MapErr(err)
 	}
@@ -67,6 +97,12 @@ func (s *Service) Get(ctx context.Context, id types.RoomID) (*Room, error) {
 		return nil, access.MapErr(err)
 	}
 	rm.Amenities = amenities
+
+	images, err := s.repo.ListImages(ctx, id)
+	if err != nil {
+		return nil, access.MapErr(err)
+	}
+	rm.Images = images
 	return rm, nil
 }
 
@@ -268,6 +304,48 @@ func (s *Service) SetImage(ctx context.Context, identity middleware.Identity, ro
 	s.record(ctx, identity, branchID, "room.update_image", rm.ID.String(),
 		map[string]any{"room_number": rm.RoomNumber}, ip)
 	return rm, nil
+}
+
+// ---------------------------------------------------------------- แกลเลอรีรูปห้อง
+
+// AddImage เพิ่มรูปเข้าแกลเลอรีของห้อง ไม่แตะรูปปก (Room.ImageURL) ที่เป็นคนละช่องกัน
+func (s *Service) AddImage(ctx context.Context, identity middleware.Identity, roomID types.RoomID,
+	url string, sortOrder int, ip string) (*RoomImage, error) {
+	branchID, err := s.branchOf(ctx, identity, roomID)
+	if err != nil {
+		return nil, err
+	}
+
+	v := validate.New()
+	url = v.ImageURL("image_url", url, true)
+	if err := v.Err(); err != nil {
+		return nil, err
+	}
+
+	img, err := s.repo.AddImage(ctx, roomID, url, sortOrder)
+	if err != nil {
+		return nil, access.MapErr(err)
+	}
+
+	s.record(ctx, identity, branchID, "room.add_image", roomID.String(),
+		map[string]any{"room_image_id": img.ID.String()}, ip)
+	return img, nil
+}
+
+// DeleteImage ลบรูปออกจากแกลเลอรี — ต้องรู้ห้องเจ้าของรูปเพื่อบังคับกฎรายสาขาก่อนลบ
+func (s *Service) DeleteImage(ctx context.Context, identity middleware.Identity,
+	roomID types.RoomID, imageID types.RoomImageID, ip string) error {
+	branchID, err := s.branchOf(ctx, identity, roomID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.DeleteImage(ctx, branchID, imageID); err != nil {
+		return access.MapErr(err)
+	}
+
+	s.record(ctx, identity, branchID, "room.delete_image", roomID.String(),
+		map[string]any{"room_image_id": imageID.String()}, ip)
+	return nil
 }
 
 // UpdateStatus คือปุ่มอัปเดตสถานะห้องแบบ real-time ในหน้าจัดการห้องพัก
