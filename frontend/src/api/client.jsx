@@ -78,8 +78,17 @@ async function request(path, { method = "GET", params, body, signal } = {}) {
 
   if (res.status === 204) return null;
 
+  // proxy/เกตเวย์ (เช่น 502 จาก nginx) หรือ URL ผิดที่ได้ index.html กลับมา ตอบเป็น HTML ไม่ใช่ JSON
+  // แปลงเป็น ApiError ที่มีข้อความไทย แทนการปล่อย SyntaxError ภาษาอังกฤษไปถึงผู้ใช้
   const text = await res.text();
-  const json = text ? JSON.parse(text) : null;
+  let json = null;
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new ApiError({ code: "internal_error", status: res.status });
+    }
+  }
 
   if (!res.ok) {
     const err = json?.error || {};

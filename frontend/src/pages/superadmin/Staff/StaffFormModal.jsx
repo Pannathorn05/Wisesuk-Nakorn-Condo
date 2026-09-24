@@ -5,7 +5,9 @@ import { IconClose } from "../../../components/icons";
 import "./StaffModal.css";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^[0-9]{9,10}$/;
+// ตรงกับ backend จริง (internal/validate phoneRe) ไม่ใช่ ^[0-9]{9,10}$ ตาม openapi — เบอร์ที่มีขีด
+// เช่น "02-872-7800" ของ superadmin ใน seed ต้องผ่าน ไม่งั้นแก้ไขบัญชีเดิมไม่ได้เลย (BUG-22)
+const PHONE_RE = /^[0-9\-\s()+]{8,20}$/;
 
 function initialForm(staff) {
   return {
@@ -50,7 +52,9 @@ export function StaffFormModal({ open, staff, branchOptions, onClose, onSaved })
     const errors = {};
     if (!form.first_name.trim()) errors.first_name = "กรุณากรอกชื่อ";
     if (!form.last_name.trim()) errors.last_name = "กรุณากรอกนามสกุล";
-    if (!PHONE_RE.test(form.phone.trim())) errors.phone = "เบอร์โทรศัพท์ต้องเป็นตัวเลข 9-10 หลัก";
+    // เบอร์ของผู้ดูแลเว้นว่างได้ (backend: v.Phone(..., false)) — admin ใน seed ไม่มีเบอร์ทั้ง 3 คน
+    const phone = form.phone.trim();
+    if (phone && !PHONE_RE.test(phone)) errors.phone = "รูปแบบเบอร์โทรศัพท์ไม่ถูกต้อง";
     if (!isEdit) {
       if (!form.email.trim()) errors.email = "กรุณากรอกอีเมล";
       else if (!EMAIL_RE.test(form.email.trim())) errors.email = "รูปแบบอีเมลไม่ถูกต้อง";

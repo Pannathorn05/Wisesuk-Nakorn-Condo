@@ -14,7 +14,7 @@ const ACTION_LABELS = {
   "booking.cancel": "ยกเลิกการจอง",
   "booking.approve": "อนุมัติการจอง",
   "booking.reject": "ปฏิเสธการจอง",
-  "booking.set_appointment": "นัดหมายเข้าชมห้อง",
+  "booking.set_appointment": "นัดหมายทำสัญญา",
   "room.create": "เพิ่มห้องพัก",
   "room.update": "แก้ไขข้อมูลห้องพัก",
   "room.update_status": "เปลี่ยนสถานะห้องพัก",
