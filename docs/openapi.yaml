@@ -2,10 +2,49 @@ openapi: 3.0.3
 
 info:
   title: Wisetsuk Nakorn Condo Booking API
-  version: 1.0.0
+  version: 1.1.0
   description: |
-    REST API ระบบจองห้องพักวิเศษสุขนครคอนโด
-    แหล่งความจริงเดียวของ contract — ทุก endpoint ตรงกับหัวข้อ API Contract ใน docs/SPEC.md
+    REST API ระบบจองห้องพักวิเศษสุขนครคอนโดและหอพักในเครือ
+
+    ไฟล์นี้เขียนตามโค้ดจริงใน `backend/` ณ 2026-09-24 (commit `96298ce`, migration 0001–0008)
+    พฤติกรรมละเอียดและช่องว่างที่รู้แล้วอยู่ใน `docs/SPEC.md` (อ้างเป็น AC-n ในคำอธิบายแต่ละ endpoint)
+
+    **ยังไม่มีในโค้ด จึงไม่อยู่ในไฟล์นี้** (แผนงานอยู่ใน SPEC):
+    `POST /api/v1/auth/forgot-password`, `POST /api/v1/auth/reset-password` (AC-23)
+    และ `GET /api/v1/bookings/{bookingID}/slip` (AC-17)
+
+    ## รูปแบบ response
+    - สำเร็จ → `{"data": ...}` · รายการแบ่งหน้า → `{"data": [...], "meta": {page, page_size, total_items, total_pages}}`
+    - 204 → ไม่มี body
+    - ข้อยกเว้นเดียว: `GET /health` ไม่ห่อ `data`
+    - error ทุกตัว (รวม 404/405 ของ router และ 500) → `{"error": {"code", "message", "fields"?}}`
+      โดย `fields` มีเฉพาะเมื่อ `code = validation_failed` · 5xx ไม่เคยมีรายละเอียดภายใน
+    - ฟิลด์ที่ไม่ได้อยู่ใน `required` ของ schema คือฟิลด์ที่ **ถูกตัดทิ้งทั้ง key** เมื่อว่างหรือ NULL (Go `omitempty`)
+      ไม่ได้ส่งมาเป็น `null`
+
+    ## รหัสอ้างอิง (id)
+    ทุก id เป็นสตริงมี prefix ของตาราง + ตัวเลขอย่างน้อย 3 หลัก เช่น `brn-001`, `rm-012`, `bkg-1000`
+    prefix: `brn` สาขา · `bimg` รูปสาขา · `amt` สิ่งอำนวยความสะดวก · `np` สถานที่ใกล้เคียง · `usr` ผู้ใช้ ·
+    `rmt` ประเภทห้อง · `rm` ห้อง · `rimg` รูปห้อง · `bkg` ใบจอง · `pay` การชำระเงิน · `ntf` แจ้งเตือน ·
+    `log` activity log · `ast` ไฟล์รูป
+    ตอนรับเข้า: prefix ไม่สนตัวพิมพ์ และตัดศูนย์นำหน้าให้เอง (`BRN-1` = `brn-001`) · ตัวเลขเปล่า, prefix ของตารางอื่น
+    หรือค่า ≤ 0 → 400 `bad_request`
+
+    ## body แบบ JSON
+    - ฟิลด์ที่ไม่รู้จัก → 422 `validation_failed` พร้อม `fields.<ชื่อฟิลด์> = "ไม่อนุญาตให้ส่งฟิลด์นี้"`
+    - พาร์สไม่ได้, ชนิดผิด, มี JSON มากกว่า 1 object หรือใหญ่เกิน 1MB → 400
+
+    ## การยืนยันตัวตน
+    `Authorization: Bearer <access_token>` (JWT HS256, `iss=wisetsuk-api`, อายุ 30 นาที)
+    role, สาขา และสถานะบัญชีอ่านจากฐานข้อมูลทุกคำขอ ไม่ได้เชื่อ claim ใน token (AC-3)
+
+    ## สิทธิ์รายสาขา (AC-4)
+    Admin ผูกกับสาขาเดียว — ไม่ส่ง `branch_id` = สาขาตัวเอง · ส่งสาขาอื่น = 403
+    Super Admin ไม่ส่ง `branch_id` = ทุกสาขา (endpoint แบบรายการ) หรือ 400 (endpoint ที่แก้ข้อมูลสาขา)
+
+    ## เวลา
+    วันที่ล้วนรับเข้าเป็น `YYYY-MM-DD` · "วันนี้/อดีต" ตัดสินตามปฏิทิน Asia/Bangkok · เวลาที่ไม่มี timezone
+    ตีความเป็นเวลาไทย (AC-22)
 
 servers:
   - url: http://localhost:8080
@@ -13,28 +52,34 @@ servers:
 
 tags:
   - name: system
-    description: ตรวจสอบสถานะระบบ
+    description: สถานะระบบและไฟล์ static
   - name: auth
     description: สมัครสมาชิก เข้าสู่ระบบ และจัดการ token
+  - name: oauth
+    description: เข้าสู่ระบบด้วย Google / Facebook
   - name: guest
     description: ข้อมูลสาธารณะที่ดูได้โดยไม่ต้องล็อกอิน
   - name: me
-    description: โปรไฟล์ รหัสผ่าน และแจ้งเตือนของผู้ใช้ที่ล็อกอินอยู่
+    description: โปรไฟล์ รหัสผ่าน และแจ้งเตือนของผู้ใช้ที่ล็อกอินอยู่ (ทุกบทบาท)
   - name: bookings
-    description: สร้างและจัดการการจองของสมาชิก
+    description: การจองของสมาชิก และการดู/ยกเลิกใบจองรายชิ้น
   - name: admin
-    description: งานของผู้ดูแล จำกัดอยู่ที่สาขาของตัวเองเท่านั้น
+    description: งานของ Admin (สาขาตัวเอง) และ Super Admin (ทุกสาขา)
   - name: superadmin
-    description: งานที่ทำได้เฉพาะผู้ดูแลสูงสุด
+    description: งานที่ทำได้เฉพาะ Super Admin
 
 security:
   - bearerAuth: []
 
 paths:
+
+  # ================================================================== system
+
   /health:
     get:
       tags: [system]
       summary: ตรวจสอบสถานะระบบ
+      description: ไม่ห่อด้วย `data` — เป็นข้อยกเว้นเดียวของระบบ
       operationId: getHealth
       security: []
       responses:
@@ -48,37 +93,44 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: healthy
+                    enum: [healthy]
                   time:
                     type: string
                     format: date-time
+                    description: เวลาปัจจุบันแบบ UTC
 
   /files/{assetID}:
     get:
       tags: [system]
-      summary: รูปสาขา/ห้องที่เก็บไว้ในฐานข้อมูล
+      summary: รูปสาขา/ห้องที่อัปโหลดเก็บไว้ในฐานข้อมูล
       description: >
-        เปิดสาธารณะเหมือนรูปบนเว็บทั่วไป ใช้เป็น src ของ <img> ได้ตรง ๆ
-        เนื้อไฟล์ผูกกับ assetID ตายตัว จึงตอบ ETag และ Cache-Control แบบ immutable
+        เปิดสาธารณะ ใช้เป็น src ของ <img> ได้ตรง ๆ · เนื้อไฟล์ผูกกับ assetID ตายตัว (dedup ด้วย sha256)
+        จึงตอบ ETag และ Cache-Control แบบ immutable (AC-14)
       operationId: getAsset
       security: []
       parameters:
-        - name: assetID
-          in: path
-          required: true
+        - $ref: '#/components/parameters/AssetIDPath'
+        - name: If-None-Match
+          in: header
+          required: false
           schema:
             type: string
-            pattern: "^ast-[0-9]+$"
       responses:
         '200':
           description: เนื้อไฟล์รูป
           headers:
             ETag:
+              description: sha256 ของเนื้อไฟล์ในเครื่องหมายคำพูด
               schema:
                 type: string
             Cache-Control:
               schema:
                 type: string
+                example: public, max-age=31536000, immutable
+            X-Content-Type-Options:
+              schema:
+                type: string
+                example: nosniff
           content:
             image/jpeg:
               schema:
@@ -93,14 +145,64 @@ paths:
                 type: string
                 format: binary
         '304':
-          description: ไฟล์ไม่เปลี่ยน (ตรงกับ If-None-Match ที่ส่งมา)
+          description: ETag ตรงกับ If-None-Match
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+    head:
+      tags: [system]
+      summary: เหมือน GET แต่ไม่มี body
+      operationId: headAsset
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AssetIDPath'
+      responses:
+        '200':
+          description: มีไฟล์นี้
+        '400':
+          description: id ผิดรูปแบบ
+        '404':
+          description: ไม่มีไฟล์นี้
+
+  /uploads/{filepath}:
+    get:
+      tags: [system]
+      summary: ไฟล์บนดิสก์ใน UPLOAD_DIR — สลิปโอนเงินและรูปเดโมจาก seed
+      description: >
+        เปิดสาธารณะ **ไม่มีการตรวจสิทธิ์** ใครที่รู้ URL ของสลิปก็เปิดได้ (AC-17)
+        · path ว่างหรือลงท้ายด้วย `/` → 404 (ไม่ให้ไล่ดูรายชื่อไฟล์)
+        · สลิปอยู่ที่ `slips/YYYY/MM/<uuid>.<ext>` · รูปเดโมอยู่ที่ `<slug>/<path>`
+        · ในโค้ดเป็น route `GET /uploads/*filepath` (filepath มี `/` ได้หลายชั้น)
+      operationId: getUpload
+      security: []
+      parameters:
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+          example: slips/2026/09/1b4e28ba-2fa1-11d2-883f-0016d3cca427.jpg
+      responses:
+        '200':
+          description: เนื้อไฟล์
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: ไม่มีไฟล์ หรือ path เป็นโฟลเดอร์
+
+  # ================================================================== auth
 
   /api/v1/auth/register:
     post:
       tags: [auth]
-      summary: สมัครสมาชิก
+      summary: สมัครสมาชิก (ได้ role member เสมอ)
+      description: >
+        สำเร็จแล้วได้ token คู่เลย ไม่ต้องล็อกอินซ้ำ · อีเมลถูก trim และเก็บเป็นตัวพิมพ์เล็ก
+        · อีเมลซ้ำกับบัญชีใดก็ได้ (รวมที่ถูกระงับ/ลบ) → 422 · สมัครพร้อมกันด้วยอีเมลเดียวกัน → อีกใบได้ 409 (AC-1)
       operationId: register
       security: []
       requestBody:
@@ -111,20 +213,28 @@ paths:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
         '201':
-          description: สมัครสำเร็จ ได้สิทธิ์ member เสมอ
+          description: สมัครสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResult'
+                $ref: '#/components/schemas/TokenPairResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/auth/login:
     post:
       tags: [auth]
-      summary: เข้าสู่ระบบ (ใช้ endpoint เดียวทุกบทบาท)
+      summary: เข้าสู่ระบบ (endpoint เดียวทุกบทบาท)
+      description: |
+        ไม่ตรวจรูปแบบ input — body `{}` ได้ 401 `invalid_credentials` (AC-2)
+
+        Rate limit นับที่ DB ในหน้าต่าง 15 นาที: ล้มเหลว 5 ครั้งต่อคู่ (อีเมล, IP) หรือ 20 ครั้งต่อ IP
+        → 429 ทั้งที่รหัสถูกและไม่ว่าอีเมลจะมีบัญชีหรือไม่ · 403 `account_disabled` ไม่นับเป็นความล้มเหลว
+        · สำเร็จแล้วล้างตัวนับของคู่ (อีเมล, IP) นั้น
       operationId: login
       security: []
       requestBody:
@@ -139,9 +249,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResult'
+                $ref: '#/components/schemas/TokenPairResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: อีเมลไม่มีในระบบหรือรหัสผ่านผิด (ข้อความเหมือนกันทั้งสองกรณี)
+          description: >
+            อีเมลไม่มีในระบบ / รหัสผิด / บัญชี OAuth ที่ยังไม่ตั้งรหัส / บัญชีที่ถูกลบ — ข้อความเดียวกันทุกกรณี
           content:
             application/json:
               schema:
@@ -151,7 +264,7 @@ paths:
                   code: invalid_credentials
                   message: อีเมลหรือรหัสผ่านไม่ถูกต้อง
         '403':
-          description: บัญชีถูกปิดใช้งาน
+          description: รหัสผ่านถูกแต่บัญชีถูกระงับ (ตรวจหลังรหัสผ่านเท่านั้น)
           content:
             application/json:
               schema:
@@ -159,29 +272,23 @@ paths:
               example:
                 error:
                   code: account_disabled
-                  message: บัญชีนี้ถูกปิดใช้งาน
-        '429':
-          description: >
-            เข้าสู่ระบบผิดเกินกำหนดใน 15 นาที — 5 ครั้งต่อคู่ (อีเมล, IP) หรือ 20 ครั้งต่อ IP
-            ตอบเหมือนกันไม่ว่าอีเมลจะมีบัญชีหรือไม่ และตอบแม้รหัสผ่านที่ส่งมาจะถูกต้อง
-          headers:
-            Retry-After:
-              description: จำนวนวินาทีที่ต้องรอก่อนลองใหม่
-              schema:
-                type: integer
+                  message: บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ
+        '422':
+          description: ส่งฟิลด์ที่ไม่รู้จักมา
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: too_many_requests
-                  message: เข้าสู่ระบบผิดหลายครั้งเกินไป กรุณาลองใหม่ใน 15 นาที
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/auth/refresh:
     post:
       tags: [auth]
-      summary: หมุน refresh token
+      summary: หมุน refresh token (ใบเดิมถูกเพิกถอนทันที)
+      description: >
+        ใบซ้ำ/หมดอายุ/logout แล้ว/มั่ว/ว่าง → 401 · บัญชีถูกระงับ → 401 และใบนั้นถูกใช้ไปแล้ว
+        · token ใบใหม่อ่าน role/ชื่อ/สาขาจาก DB ณ ตอนนั้น (AC-3)
       operationId: refreshToken
       security: []
       requestBody:
@@ -196,14 +303,17 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenPair'
+                $ref: '#/components/schemas/TokenPairResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
   /api/v1/auth/logout:
     post:
       tags: [auth]
-      summary: ออกจากระบบ
+      summary: ออกจากระบบ (เพิกถอน refresh token ใบนี้)
+      description: ค่าใดก็ได้ (ผิด/หมดอายุ/ไม่มีจริง/ว่าง) → 204 เหมือนกัน · ไม่มี body เลย → 400
       operationId: logout
       security: []
       requestBody:
@@ -214,113 +324,197 @@ paths:
               $ref: '#/components/schemas/RefreshRequest'
       responses:
         '204':
-          description: ตอบ 204 เสมอ ไม่ว่า token จะใช้ได้หรือไม่
+          description: ออกจากระบบแล้ว
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
-  /api/v1/auth/forgot-password:
-    post:
-      tags: [auth]
-      summary: ขอลิงก์รีเซ็ตรหัสผ่านทางอีเมล
+  # ================================================================== oauth
+
+  /api/v1/auth/oauth:
+    get:
+      tags: [oauth]
+      summary: provider ที่เปิดใช้งานอยู่
+      description: เปิดเฉพาะ provider ที่ตั้ง client id และ secret ครบ · เรียง google ก่อน facebook (AC-24)
+      operationId: listOAuthProviders
+      security: []
+      responses:
+        '200':
+          description: รายชื่อ provider
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [providers]
+                    properties:
+                      providers:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/OAuthProvider'
+              example:
+                data:
+                  providers: [google]
+
+  /api/v1/auth/oauth/{provider}:
+    get:
+      tags: [oauth]
+      summary: พาเบราว์เซอร์ไปหน้ายินยอมของ provider
+      description: >
+        ใช้เป็นลิงก์ให้เบราว์เซอร์เปิดตรง ๆ ไม่ใช่ fetch · ตั้ง cookie `wisetsuk_oauth_state` และ
+        `wisetsuk_oauth_verifier` (HttpOnly, SameSite=Lax, path `/api/v1/auth/oauth`, อายุ 10 นาที,
+        Secure เฉพาะ production) แล้ว 302 ไป provider ด้วย PKCE S256 · Google บังคับ `prompt=select_account`
+        · redirect URI = `{PUBLIC_BASE_URL}/api/v1/auth/oauth/{provider}/callback`
+      operationId: startOAuth
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProviderPath'
+      responses:
+        '302':
+          description: ไปหน้ายินยอมของ provider
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              schema:
+                type: string
+        '404':
+          description: provider ไม่รู้จักหรือปิดอยู่
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/oauth/{provider}/callback:
+    get:
+      tags: [oauth]
+      summary: ปลายทางที่ provider ส่งผู้ใช้กลับมา
       description: |
-        ตอบ 204 เสมอไม่ว่าอีเมลจะมีบัญชีอยู่จริงหรือไม่ เพื่อไม่ให้ใช้ endpoint นี้
-        ไล่เดาว่าอีเมลใดมีบัญชีในระบบ (ดู AC-23 ใน docs/SPEC.md)
+        ลบ cookie handshake ทิ้งทุกครั้ง แล้ว **302 ไป `FRONTEND_OAUTH_CALLBACK_URL` เสมอ** (ยกเว้น provider ปิดอยู่ → 404 JSON)
+        - สำเร็จ → `?code=<exchange code>` (ใช้ครั้งเดียว อายุ 2 นาที) นำไปแลกที่ `POST /api/v1/auth/oauth/exchange`
+        - ล้มเหลว → `?error=<ข้อความไทย>` เช่น ผู้ใช้กดยกเลิก, state ไม่ตรง/ไม่มี cookie, ไม่มี code,
+          provider ไม่ส่งอีเมล, อีเมลยังไม่ยืนยัน, แลก token ไม่สำเร็จ, บัญชีถูกระงับ
 
-        ถ้าอีเมลมีบัญชีที่ยังเปิดใช้งานอยู่ ระบบจะส่งอีเมลที่มีลิงก์
-        `PUBLIC_APP_URL/reset-password?token=...` ให้ โดย token มีอายุ 15 นาที
-        และใช้ได้ครั้งเดียว ขอใหม่แล้วใบเก่าทุกใบใช้ไม่ได้ทันที
+        การจับคู่บัญชี: identity เดิม (`auth.oauth_login`) → อีเมลตรงกับบัญชีที่ยังไม่ถูกลบ ผูกเพิ่มทุก role (`auth.oauth_link`)
+        → สร้าง member ใหม่ที่ยังไม่มีรหัสผ่านและ `phone=""` (`auth.oauth_register`)
+      operationId: oauthCallback
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProviderPath'
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          description: provider ส่งมาเมื่อผู้ใช้กดยกเลิก
+          schema:
+            type: string
+      responses:
+        '302':
+          description: กลับไปหน้า frontend พร้อม `code` หรือ `error`
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              example: http://localhost:3000/auth/callback?code=Zx8k...
+        '404':
+          description: provider ไม่รู้จักหรือปิดอยู่
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-        ขอซ้ำเกิน 5 ครั้งใน 1 ชั่วโมงต่ออีเมล ยังได้ 204 แต่จะไม่มีอีเมลถูกส่ง
-      operationId: forgotPassword
+  /api/v1/auth/oauth/exchange:
+    post:
+      tags: [oauth]
+      summary: แลก exchange code เป็น token คู่
+      operationId: exchangeOAuthCode
       security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ForgotPasswordRequest'
+              type: object
+              required: [code]
+              additionalProperties: false
+              properties:
+                code:
+                  type: string
       responses:
-        '204':
-          description: รับคำขอแล้ว — ตอบเหมือนกันทุกกรณี ไม่บอกใบ้ว่าอีเมลมีบัญชีหรือไม่
+        '200':
+          description: ได้ token คู่
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/ValidationFailed'
-
-  /api/v1/auth/reset-password:
-    post:
-      tags: [auth]
-      summary: ตั้งรหัสผ่านใหม่ด้วย token จากอีเมล
-      description: |
-        สำเร็จแล้ว refresh token ทุกใบของบัญชีนั้นถูกเพิกถอนทันที
-        (access token ใบเดิมยังใช้ได้จนหมดอายุ เหมือน AC-3)
-
-        token ที่ผิด/หมดอายุ/ถูกใช้ไปแล้ว/ถูกแทนที่ ตอบ 422 ด้วยข้อความเดียวกันทุกกรณี
-      operationId: resetPassword
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ResetPasswordRequest'
-      responses:
-        '204':
-          description: ตั้งรหัสผ่านใหม่สำเร็จ เข้าสู่ระบบด้วยรหัสใหม่ได้ทันที
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          description: token ใช้ไม่ได้ หรือรหัสผ่านใหม่ผิดกติกา
+        '401':
+          description: code ว่าง / ไม่มีจริง / หมดอายุ / ใช้ไปแล้ว
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error:
-                  code: validation_failed
-                  message: ข้อมูลไม่ถูกต้อง
-                  fields:
-                    token: ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุแล้ว
+                  code: unauthorized
+                  message: ลิงก์เข้าสู่ระบบหมดอายุแล้ว กรุณาลองใหม่อีกครั้ง
+        '403':
+          $ref: '#/components/responses/AccountDisabled'
+
+  # ================================================================== guest
 
   /api/v1/branches:
     get:
       tags: [guest]
-      summary: รายการสาขา
+      summary: สาขาที่เปิดใช้งาน พร้อมรูป สิ่งอำนวยความสะดวก และสถานที่ใกล้เคียง
+      description: เฉพาะ `is_active=true` เรียงตาม `created_at` (AC-27)
       operationId: listBranches
       security: []
       responses:
         '200':
-          description: รายการสาขาที่เปิดใช้งาน
+          description: รายการสาขา
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Branch'
+                $ref: '#/components/schemas/BranchListResponse'
 
   /api/v1/branches/{branchID}:
     get:
       tags: [guest]
-      summary: รายละเอียดสาขาพร้อมรูป สิ่งอำนวยความสะดวก และสถานที่ใกล้เคียง
-      description: สาขาที่ปิดใช้งานตอบ 404 (ทั้งเรียกด้วย id และ slug)
+      summary: รายละเอียดสาขา (รับทั้ง id และ slug)
+      description: >
+        ค่าที่ไม่ใช่ id ถูกตีความเป็น slug · ไม่เจอ หรือสาขาปิดใช้งาน → 404 ทั้งทาง id และ slug (AC-27)
       operationId: getBranch
       security: []
       parameters:
-        - $ref: '#/components/parameters/BranchIDPath'
+        - $ref: '#/components/parameters/BranchIDOrSlugPath'
       responses:
         '200':
           description: รายละเอียดสาขา
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BranchDetail'
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                $ref: '#/components/schemas/BranchResponse'
         '404':
           $ref: '#/components/responses/NotFound'
 
   /api/v1/amenities:
     get:
       tags: [guest]
-      summary: รายการสิ่งอำนวยความสะดวกทั้งหมด
+      summary: รายการสิ่งอำนวยความสะดวกกลางทั้งหมด
+      description: เรียง `sort_order, name` · เพิ่ม/แก้ได้ทาง seed เท่านั้น
       operationId: listAmenities
       security: []
       responses:
@@ -329,20 +523,24 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Amenity'
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Amenity'
 
   /api/v1/room-types:
     get:
       tags: [guest]
-      summary: รายการประเภทห้อง
+      summary: ประเภทห้อง
+      description: ไม่ส่ง `branch_id` = ทุกสาขาปนกัน · เรียง `sort_order, name`
       operationId: listRoomTypes
       security: []
       parameters:
         - name: branch_id
           in: query
-          required: false
           schema:
             type: string
             pattern: "^brn-[0-9]+$"
@@ -352,15 +550,28 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RoomType'
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RoomType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /api/v1/rooms/search:
     get:
       tags: [guest]
-      summary: ค้นหาห้องว่าง
-      description: ไม่คืนห้องที่ถูกลบ หรืออยู่ในสาขาที่ปิดใช้งาน
+      summary: ค้นหาห้องที่จองได้
+      description: |
+        คืนเฉพาะห้องที่ `is_active`, `status=available` และสาขาเปิดใช้งาน · เรียง `branch_id, room_number` (AC-12)
+        - ส่ง `check_in` และ `check_out` คู่กัน → ตัดห้องที่มีใบรายวันทับช่วง (ครึ่งเปิด: วันออกของใบเดิม = วันเข้าใหม่ ไม่ทับ)
+          ส่งมาตัวเดียว → ไม่กรองใบรายวัน
+        - ห้องที่มีใบรายเดือนถืออยู่ถูกตัดเมื่อ `move_in_date` ของใบนั้น ≤ `move_in_date` ที่ค้น (ไม่ส่ง = วันนี้ของ DB)
+          — หลวมกว่าตอนจองจริง ห้องที่โผล่อาจจองแล้วได้ 409
+        - `stay_type=daily` และ `check_out <= check_in` → 422 `fields.check_out`
+        - แต่ละห้องมี `amenities` ของห้องนั้น แต่ไม่มี `images`
       operationId: searchRooms
       security: []
       parameters:
@@ -374,10 +585,7 @@ paths:
           schema:
             type: string
             pattern: "^rmt-[0-9]+$"
-        - name: stay_type
-          in: query
-          schema:
-            $ref: '#/components/schemas/StayType'
+        - $ref: '#/components/parameters/StayTypeQuery'
         - name: check_in
           in: query
           schema:
@@ -405,27 +613,22 @@ paths:
         - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: ผลการค้นหาแบบแบ่งหน้า
+          description: ผลค้นหาแบบแบ่งหน้า
           content:
             application/json:
               schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Room'
-                  meta:
-                    $ref: '#/components/schemas/PageMeta'
+                $ref: '#/components/schemas/RoomPage'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/rooms/{roomID}:
     get:
       tags: [guest]
-      summary: รายละเอียดห้อง
-      description: ห้องที่ถูกลบ หรืออยู่ในสาขาที่ปิดใช้งาน ตอบ 404
+      summary: รายละเอียดห้องพร้อมสิ่งอำนวยความสะดวกและแกลเลอรี
+      description: >
+        ห้องที่ถูกลบหรืออยู่ในสาขาที่ปิด → 404 · ห้องที่ `occupied`/`maintenance` ยังคืน 200 ตามปกติ (AC-27)
       operationId: getRoom
       security: []
       parameters:
@@ -436,11 +639,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Room'
+                $ref: '#/components/schemas/RoomResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  # ================================================================== me
 
   /api/v1/me:
     get:
@@ -453,12 +658,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/UserResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
     put:
       tags: [me]
-      summary: แก้ไขโปรไฟล์
+      summary: แก้ไขโปรไฟล์ของตัวเอง
+      description: >
+        `first_name`, `last_name`, `phone` บังคับทุกครั้ง (บัญชีจาก OAuth ต้องกรอกเบอร์ก่อน)
+        · ไม่ส่ง `avatar_url` = คงค่าเดิม (AC-29)
       operationId: updateMe
       requestBody:
         required: true
@@ -472,14 +680,21 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/me/password:
     post:
       tags: [me]
-      summary: เปลี่ยนรหัสผ่าน (เพิกถอน refresh token ทุกใบ)
+      summary: เปลี่ยนรหัสผ่าน หรือตั้งรหัสครั้งแรกสำหรับบัญชีจาก OAuth
+      description: >
+        บัญชีที่ยังไม่มีรหัสผ่านไม่ต้องส่ง `current_password` · สำเร็จแล้วปลด `must_change_password`
+        และเพิกถอน refresh token ทุกใบของบัญชี (access token ใบเดิมยังใช้ได้จนหมดอายุ) (AC-29, AC-3)
       operationId: changePassword
       requestBody:
         required: true
@@ -494,86 +709,129 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [message]
+                required: [data]
                 properties:
-                  message:
-                    type: string
+                  data:
+                    type: object
+                    required: [message]
+                    properties:
+                      message:
+                        type: string
+              example:
+                data:
+                  message: เปลี่ยนรหัสผ่านเรียบร้อยแล้ว กรุณาเข้าสู่ระบบใหม่
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '422':
-          $ref: '#/components/responses/ValidationFailed'
+          description: >
+            ไม่ส่ง/ส่งรหัสเดิมผิด (`fields.current_password`), รหัสใหม่ซ้ำรหัสเดิมหรือผิดกติกา (`fields.new_password`),
+            ยืนยันไม่ตรง (`fields.confirm_password`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: validation_failed
+                  message: ข้อมูลที่กรอกไม่ถูกต้อง
+                  fields:
+                    current_password: รหัสผ่านเดิมไม่ถูกต้อง
 
   /api/v1/me/notifications:
     get:
       tags: [me]
-      summary: รายการแจ้งเตือนของตัวเอง
+      summary: แจ้งเตือนล่าสุดของตัวเอง
+      description: >
+        `items` เรียงใหม่สุดก่อน ไม่เกิน 30 รายการ · `unread_count` นับที่ยังไม่อ่านทั้งหมด (ไม่จำกัดที่ 30)
       operationId: listNotifications
       responses:
         '200':
-          description: รายการแจ้งเตือนพร้อมจำนวนที่ยังไม่อ่าน
+          description: รายการแจ้งเตือน
           content:
             application/json:
               schema:
                 type: object
-                required: [items, unread_count]
+                required: [data]
                 properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Notification'
-                  unread_count:
-                    type: integer
+                  data:
+                    type: object
+                    required: [items, unread_count]
+                    properties:
+                      items:
+                        type: array
+                        maxItems: 30
+                        items:
+                          $ref: '#/components/schemas/Notification'
+                      unread_count:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/me/notifications/read:
     post:
       tags: [me]
-      summary: ทำเครื่องหมายว่าอ่านแล้ว (ไม่ระบุ id = อ่านทั้งหมด)
+      summary: ทำเครื่องหมายว่าอ่านแล้ว
+      description: >
+        `{}` = อ่านทุกรายการ · `{"id":"ntf-001"}` = อ่านรายการเดียว (เป็นของคนอื่นหรือไม่มีจริง → 204 โดยไม่เปลี่ยนอะไร)
+        · ต้องส่ง JSON body เสมอ ไม่มี body → 400
       operationId: markNotificationsRead
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 id:
                   type: string
                   pattern: "^ntf-[0-9]+$"
       responses:
         '204':
-          description: สำเร็จ ตอบ 204 แม้ id ไม่ใช่ของตัวเองหรือไม่มีจริง
+          description: สำเร็จ
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ================================================================== bookings
 
   /api/v1/bookings:
     get:
       tags: [bookings]
-      summary: รายการการจองของตัวเอง
+      summary: ประวัติการจองของตัวเอง (Member เท่านั้น)
+      description: เรียงใหม่สุดก่อน · มี `latest_payment` เฉพาะใบที่ไม่ใช่ `pending_payment`
       operationId: listMyBookings
       parameters:
-        - name: status
-          in: query
-          schema:
-            $ref: '#/components/schemas/BookingStatus'
-        - name: stay_type
-          in: query
-          schema:
-            $ref: '#/components/schemas/StayType'
+        - $ref: '#/components/parameters/BookingStatusQuery'
+        - $ref: '#/components/parameters/StayTypeQuery'
         - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
           description: รายการการจองแบบแบ่งหน้า
           content:
             application/json:
               schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Booking'
-                  meta:
-                    $ref: '#/components/schemas/PageMeta'
+                $ref: '#/components/schemas/BookingPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [bookings]
-      summary: สร้างการจอง
+      summary: สร้างการจอง (Member เท่านั้น)
+      description: |
+        ทั้งหมดอยู่ใน transaction เดียวที่ล็อกแถวห้อง (`SELECT ... FOR UPDATE`) (AC-6, AC-7, AC-8)
+        - รายวัน: `total_amount = price × nights` · `nights = check_out_date - check_in_date`
+        - รายเดือน: `total_amount = contract_fee` ของสาขา ณ ตอนจอง (ค่าเช่าเก็บวันทำสัญญา)
+        - ใบที่ถือห้อง = `pending_payment`, `awaiting_review`, `approved`
+          · มีใบรายเดือนถืออยู่ → จองอะไรก็ไม่ได้ · ใบรายวันทับช่วง → 409 · ห้อง `occupied`/`maintenance` → 409
+        - ผลลัพธ์ `status = pending_payment` · member ได้แจ้งเตือน
       operationId: createBooking
       requestBody:
         required: true
@@ -587,93 +845,58 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
+                $ref: '#/components/schemas/BookingResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: ไม่พบห้อง
+          description: ไม่พบห้อง หรือห้องถูกลบ
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: not_found
-                  message: ไม่พบห้องพักที่ระบุ
         '409':
-          description: ห้องไม่ว่าง
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: room_unavailable
-                  message: ห้องนี้ถูกจองแล้ว
+          $ref: '#/components/responses/RoomUnavailable'
         '422':
           $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/bookings/{bookingID}:
     get:
       tags: [bookings]
-      summary: รายละเอียดการจอง
+      summary: รายละเอียดใบจองพร้อมการแจ้งชำระล่าสุด
+      description: >
+        เจ้าของใบ, admin สาขาเดียวกัน หรือ super admin · member คนอื่น → 404 · admin คนละสาขา → 403 (AC-4, AC-5)
       operationId: getBooking
       parameters:
         - $ref: '#/components/parameters/BookingIDPath'
       responses:
         '200':
-          description: รายละเอียดการจอง
+          description: รายละเอียดใบจอง
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
-        '404':
-          description: ไม่พบ ไม่ใช่เจ้าของ หรือคนละสาขา
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: not_found
-                  message: ไม่พบการจองที่ระบุ
-
-  /api/v1/bookings/{bookingID}/slip:
-    get:
-      tags: [bookings]
-      summary: ดาวน์โหลดสลิปโอนเงิน (ตรวจสิทธิ์ก่อนเสิร์ฟ)
-      operationId: getBookingSlip
-      parameters:
-        - $ref: '#/components/parameters/BookingIDPath'
-      responses:
-        '200':
-          description: ไฟล์สลิป
-          content:
-            image/jpeg:
-              schema:
-                type: string
-                format: binary
-            image/png:
-              schema:
-                type: string
-                format: binary
-            application/pdf:
-              schema:
-                type: string
-                format: binary
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: ไม่พบ ไม่มีสิทธิ์ หรือยังไม่เคยแนบสลิป (ตอบเหมือนกันหมด)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/bookings/{bookingID}/cancel:
     post:
       tags: [bookings]
       summary: ยกเลิกการจอง
+      description: |
+        ไม่มี body (AC-11)
+        - member: ยกเลิกได้เฉพาะใบ `pending_payment` ของตัวเอง ใบสถานะอื่น → 409 · ใบของคนอื่น → 404
+        - admin (สาขาตัวเอง) / super admin: ยกเลิกได้ทุกสถานะ รวมใบที่ยกเลิกไปแล้ว · admin คนละสาขา → 403
+        - ใบรายเดือน → ห้องที่ `occupied` กลับเป็น `available` ถ้าไม่มีใบรายเดือนอื่นถืออยู่ (ห้อง `maintenance` ไม่ถูกแตะ)
       operationId: cancelBooking
       parameters:
         - $ref: '#/components/parameters/BookingIDPath'
@@ -683,16 +906,41 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/InvalidState'
+          description: member ยกเลิกใบที่ไม่ใช่ `pending_payment`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: invalid_state
+                  message: รายการจองนี้ไม่สามารถยกเลิกเองได้ กรุณาติดต่อผู้ดูแลระบบของสาขา
 
   /api/v1/bookings/{bookingID}/payment:
     post:
       tags: [bookings]
-      summary: แจ้งชำระเงินพร้อมแนบสลิป
+      summary: แจ้งชำระเงินพร้อมแนบสลิป (Member เท่านั้น)
+      description: |
+        ลำดับการตรวจ (ผิดข้อแรกตอบทันที) (AC-9):
+        1. id ผิดรูปแบบ → 400
+        2. body ใหญ่เกิน `MAX_UPLOAD_MB`+1MB หรือพาร์ส multipart ไม่ได้ → 400
+        3. `amount` ไม่ใช่ตัวเลข → 422 · 4. `transferred_at` พาร์สไม่ได้ → 422
+        5. `note` ไม่ใช่ UTF-8 → 400 · 6. ไม่แนบ/ชนิดผิด/ใหญ่เกิน `slip` → 400 (ไฟล์ถูกเขียนลงดิสก์ตรงนี้)
+        7. ใบไม่มีหรือเป็นของคนอื่น → 404 · 8. ใบไม่ใช่ `pending_payment` → 409
+        9. `amount <= 0` หรือ `transferred_at` อนาคตเกิน 5 นาที → 422
+
+        สำเร็จ → ใบเป็น `awaiting_review` และได้ `latest_payment` แถวใหม่ (`status=submitted`)
+        ไม่เทียบ `amount` กับ `total_amount` · สลิปเก็บที่ `UPLOAD_DIR/slips/YYYY/MM/<uuid>.<ext>`
       operationId: submitPayment
       parameters:
         - $ref: '#/components/parameters/BookingIDPath'
@@ -701,83 +949,75 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              required: [slip, amount, transferred_at]
-              properties:
-                slip:
-                  type: string
-                  format: binary
-                amount:
-                  type: number
-                transferred_at:
-                  type: string
-                  format: date-time
-                note:
-                  type: string
+              $ref: '#/components/schemas/SubmitPaymentForm'
       responses:
         '200':
-          description: แจ้งชำระเงินสำเร็จ สถานะเป็น awaiting_review
+          description: แจ้งชำระสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
+                $ref: '#/components/schemas/BookingResponse'
         '400':
-          description: ไฟล์ไม่ถูกต้องหรือใหญ่เกินกำหนด
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: ใบไม่อยู่ในสถานะที่แจ้งชำระได้
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error:
-                  code: bad_request
-                  message: ไฟล์สลิปไม่ถูกต้อง
-        '409':
-          $ref: '#/components/responses/InvalidState'
+                  code: invalid_state
+                  message: รายการจองนี้ไม่อยู่ในสถานะที่แจ้งชำระเงินได้
         '422':
           $ref: '#/components/responses/ValidationFailed'
+
+  # ================================================================== admin
 
   /api/v1/admin/dashboard:
     get:
       tags: [admin]
-      summary: แดชบอร์ดผู้ดูแล
+      summary: สถิติรายสาขา + กิจกรรมล่าสุด 10 รายการ
       description: >
-        Admin ได้ BranchSummary ของสาขาตัวเองรายการเดียว
-        ส่วน Super Admin ได้ครบทุกสาขา
-      operationId: getAdminDashboard
+        admin เห็นเฉพาะสาขาตัวเอง · super admin เห็นทุกสาขา (รวมที่ปิดใช้งาน) และ **ไม่รับ** `branch_id`
+        · "ว่าง" = ห้อง `status=available` ที่ยัง `is_active` (AC-25)
+      operationId: getDashboard
       responses:
         '200':
-          description: สรุปข้อมูลรายสาขาและกิจกรรมล่าสุด
+          description: ข้อมูลแดชบอร์ด
           content:
             application/json:
               schema:
                 type: object
-                required: [branches, recent_activities]
+                required: [data]
                 properties:
-                  branches:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/BranchSummary'
-                  recent_activities:
-                    type: array
-                    description: กิจกรรมล่าสุด 10 รายการในสาขาที่มีสิทธิ์เห็น เรียงใหม่ไปเก่า
-                    items:
-                      $ref: '#/components/schemas/ActivityLog'
+                  data:
+                    $ref: '#/components/schemas/Dashboard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/admin/activity-logs:
     get:
       tags: [admin]
-      summary: บันทึกการกระทำ
+      summary: ประวัติการใช้งาน
+      description: >
+        เรียงใหม่สุดก่อน · admin เห็นเฉพาะ log ที่ `branch_id` เป็นสาขาตัวเอง · super admin ไม่ส่ง `branch_id`
+        → ทุกแถวรวมที่ `branch_id` เป็น NULL (AC-13)
       operationId: listActivityLogs
       parameters:
-        - name: search
-          in: query
-          description: ค้นจากชื่อผู้กระทำ ชื่อสาขา หรือรหัสอ้างอิงของสิ่งที่ถูกกระทำ (ไม่สนตัวพิมพ์เล็กใหญ่)
-          schema:
-            type: string
+        - $ref: '#/components/parameters/BranchIDQuery'
         - name: actor_role
           in: query
           schema:
-            $ref: '#/components/schemas/ActorRole'
+            $ref: '#/components/schemas/UserRole'
         - name: actor_id
           in: query
           schema:
@@ -785,72 +1025,69 @@ paths:
             pattern: "^usr-[0-9]+$"
         - name: action
           in: query
+          description: ตรงตัว
           schema:
             $ref: '#/components/schemas/ActivityAction'
-        - $ref: '#/components/parameters/BranchIDQuery'
+        - name: search
+          in: query
+          description: ILIKE ใน actor_name, ชื่อสาขา และ entity_id
+          schema:
+            type: string
         - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: รายการบันทึกแบบแบ่งหน้า
+          description: รายการแบบแบ่งหน้า
           content:
             application/json:
               schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/ActivityLog'
-                  meta:
-                    $ref: '#/components/schemas/PageMeta'
+                $ref: '#/components/schemas/ActivityLogPage'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/admin/bookings:
     get:
       tags: [admin]
-      summary: รายการการจองในสาขาที่ดูแล
+      summary: จัดการการจอง
+      description: >
+        เรียงใหม่สุดก่อน · `search` = ILIKE ใน code, เลขห้อง, ชื่อ/นามสกุลเจ้าของบัญชี (ไม่รวมอีเมลและชื่อผู้เข้าพัก)
+        · ใบ `pending_payment` ไม่มี `latest_payment` แนบมา (AC-28)
       operationId: listAdminBookings
       parameters:
-        - name: status
-          in: query
-          schema:
-            $ref: '#/components/schemas/BookingStatus'
-        - name: stay_type
-          in: query
-          schema:
-            $ref: '#/components/schemas/StayType'
+        - $ref: '#/components/parameters/BranchIDQuery'
+        - $ref: '#/components/parameters/BookingStatusQuery'
+        - $ref: '#/components/parameters/StayTypeQuery'
         - name: search
           in: query
           schema:
             type: string
-        - $ref: '#/components/parameters/BranchIDQuery'
         - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: รายการการจองแบบแบ่งหน้า
+          description: รายการแบบแบ่งหน้า
           content:
             application/json:
               schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Booking'
-                  meta:
-                    $ref: '#/components/schemas/PageMeta'
+                $ref: '#/components/schemas/BookingPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/admin/bookings/{bookingID}/approve:
     post:
       tags: [admin]
       summary: อนุมัติการจอง
+      description: >
+        ใบต้องเป็น `awaiting_review` · payment ที่ยัง `submitted` เป็น `approved` · ใบรายเดือนทำให้ห้องเป็น `occupied`
+        ใน transaction เดียวกัน · ไม่ต้องส่ง body · ใบของสาขาอื่น → 404 (AC-10)
       operationId: approveBooking
       parameters:
         - $ref: '#/components/parameters/BookingIDPath'
@@ -860,20 +1097,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: ไม่พบ หรือเป็นใบของสาขาอื่น
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/InvalidState'
+          $ref: '#/components/responses/NotAwaitingReview'
 
   /api/v1/admin/bookings/{bookingID}/reject:
     post:
       tags: [admin]
-      summary: ปฏิเสธการจอง (ใบกลับไปสถานะ pending_payment)
+      summary: ปฏิเสธการแจ้งชำระ — ใบกลับเป็น pending_payment
+      description: >
+        ใบต้องเป็น `awaiting_review` · ใบ**กลับไปเป็น `pending_payment`** และยังถือห้องไว้ · payment เป็น `rejected`
+        และเก็บเหตุผลที่ `reject_reason` · ลำดับตรวจ: ใบไม่มี/ข้ามสาขา 404 → สถานะผิด 409 → ไม่มีเหตุผล 422 (AC-10)
       operationId: rejectBooking
       parameters:
         - $ref: '#/components/parameters/BookingIDPath'
@@ -884,33 +1126,39 @@ paths:
             schema:
               type: object
               required: [reason]
+              additionalProperties: false
               properties:
                 reason:
                   type: string
-                  minLength: 1
+                  description: ถูก trim · ค่าว่างได้ 422
       responses:
         '200':
-          description: ปฏิเสธสำเร็จ ใบกลับไป pending_payment และตั้ง expires_at ใหม่
+          description: ปฏิเสธสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: ไม่พบ หรือเป็นใบของสาขาอื่น
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/InvalidState'
+          $ref: '#/components/responses/NotAwaitingReview'
         '422':
           $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/admin/bookings/{bookingID}/appointment:
     put:
       tags: [admin]
-      summary: นัดหมายทำสัญญา (เฉพาะใบรายเดือน)
-      operationId: setBookingAppointment
+      summary: กำหนดวันนัดหมายทำสัญญา (ใบรายเดือนเท่านั้น)
+      description: >
+        เขียนทับนัดเดิมได้ทุกครั้ง · ไม่ตรวจสถานะใบจอง · `appointment_at` พาร์สไม่ได้ → 422 (ตรวจก่อนหาใบ)
+        · ใบรายวัน → 400 · ไม่อยู่ในอนาคต → 422 · admin คนละสาขา → 403 · member ได้แจ้งเตือน (AC-20)
+      operationId: setAppointment
       parameters:
         - $ref: '#/components/parameters/BookingIDPath'
       requestBody:
@@ -918,40 +1166,32 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [appointment_at]
-              properties:
-                appointment_at:
-                  type: string
-                  format: date-time
-                note:
-                  type: string
+              $ref: '#/components/schemas/AppointmentRequest'
       responses:
         '200':
-          description: นัดหมายสำเร็จ
+          description: ตั้งนัดสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
+                $ref: '#/components/schemas/BookingResponse'
         '400':
-          description: ไม่ใช่การจองรายเดือน
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: bad_request
-                  message: นัดหมายทำสัญญาใช้ได้เฉพาะการจองรายเดือน
-        '409':
-          $ref: '#/components/responses/InvalidState'
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/admin/members:
     get:
       tags: [admin]
-      summary: รายชื่อสมาชิก
+      summary: รายชื่อสมาชิกทั้งระบบ
+      description: >
+        member ที่ยังไม่ถูกลบทั้งหมด ไม่กรองตามสาขา (member ไม่ผูกสาขา) · `search` = ILIKE ในชื่อ นามสกุล อีเมล เบอร์
+        · เรียงคนที่สมัครล่าสุดก่อน (AC-28)
       operationId: listMembers
       parameters:
         - name: search
@@ -959,26 +1199,28 @@ paths:
           schema:
             type: string
         - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: รายชื่อสมาชิกแบบแบ่งหน้า
+          description: รายการแบบแบ่งหน้า
           content:
             application/json:
               schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/User'
-                  meta:
-                    $ref: '#/components/schemas/PageMeta'
+                $ref: '#/components/schemas/UserPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/admin/members/{memberID}/bookings:
     get:
       tags: [admin]
-      summary: การจองของสมาชิกรายคน
+      summary: ประวัติการจองของสมาชิกรายคน
+      description: >
+        admin เห็นเฉพาะใบในสาขาตัวเอง · super admin เห็นทุกสาขา (ไม่รับ `branch_id`)
+        · ผู้ใช้ไม่มีจริงหรือไม่ใช่ member → 200 รายการว่าง (AC-28)
       operationId: listMemberBookings
       parameters:
         - name: memberID
@@ -988,26 +1230,28 @@ paths:
             type: string
             pattern: "^usr-[0-9]+$"
         - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: รายการการจองแบบแบ่งหน้า
+          description: รายการแบบแบ่งหน้า
           content:
             application/json:
               schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Booking'
-                  meta:
-                    $ref: '#/components/schemas/PageMeta'
+                $ref: '#/components/schemas/BookingPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/admin/rooms:
     get:
       tags: [admin]
-      summary: รายการห้องในสาขาที่ดูแล
+      summary: ห้องทุกสถานะในสาขาที่ดูแล
+      description: >
+        ห้องที่ `is_active` ทุกสถานะ รวมห้องในสาขาที่ปิดใช้งาน · ไม่มี `amenities` แนบมา
+        · รับ `check_in`/`check_out`/`move_in_date` ได้ (ตรวจรูปแบบ) แต่ไม่มีผลกรอง (AC-19)
       operationId: listAdminRooms
       parameters:
         - $ref: '#/components/parameters/BranchIDQuery'
@@ -1016,58 +1260,68 @@ paths:
           schema:
             type: string
             pattern: "^rmt-[0-9]+$"
-        - name: status
+        - $ref: '#/components/parameters/StayTypeQuery'
+        - name: min_price
           in: query
           schema:
-            $ref: '#/components/schemas/RoomStatus'
-        - name: stay_type
+            type: number
+        - name: max_price
           in: query
           schema:
-            $ref: '#/components/schemas/StayType'
+            type: number
         - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: รายการห้องแบบแบ่งหน้า
+          description: รายการแบบแบ่งหน้า
           content:
             application/json:
               schema:
-                type: object
-                required: [data, meta]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Room'
-                  meta:
-                    $ref: '#/components/schemas/PageMeta'
+                $ref: '#/components/schemas/RoomPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [admin]
-      summary: เพิ่มห้อง
+      summary: เพิ่มห้องพัก
+      description: >
+        admin ไม่ส่ง `branch_id` = สาขาตัวเอง · ส่งสาขาอื่น → 403 · super admin ต้องส่ง ไม่งั้น 400
+        · ห้องกับ `amenity_ids` ลงใน transaction เดียวกัน (AC-19)
       operationId: createRoom
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateRoomRequest'
+              $ref: '#/components/schemas/SaveRoomRequest'
       responses:
         '201':
-          description: เพิ่มห้องสำเร็จ
+          description: สร้างสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Room'
+                $ref: '#/components/schemas/RoomResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '422':
           $ref: '#/components/responses/ValidationFailed'
+        '500':
+          $ref: '#/components/responses/InternalErrorForeignKey'
 
   /api/v1/admin/rooms/{roomID}:
     put:
       tags: [admin]
-      summary: แก้ไขห้อง
+      summary: แก้ไขห้องพัก (แทนที่ทั้งชุด)
+      description: >
+        สาขายึดตามห้องเดิม (`branch_id` ใน body ถูกเมิน) · ไม่ส่ง `image_url` = คงรูปเดิม · ไม่ส่ง `amenity_ids` = คงเดิม
+        · ไม่ส่ง `room_type_id`/`size_sqm` = กลายเป็นว่าง · ไม่ตรวจใบจองที่ค้างอยู่ (AC-19)
       operationId: updateRoom
       parameters:
         - $ref: '#/components/parameters/RoomIDPath'
@@ -1076,49 +1330,90 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateRoomRequest'
+              $ref: '#/components/schemas/SaveRoomRequest'
       responses:
         '200':
           description: แก้ไขสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Room'
+                $ref: '#/components/schemas/RoomResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationFailed'
+        '500':
+          $ref: '#/components/responses/InternalErrorForeignKey'
     delete:
       tags: [admin]
-      summary: ลบห้อง (soft delete)
+      summary: ลบห้อง (soft delete — is_active = false)
+      description: ไม่ตรวจใบจองที่ค้าง · ลบห้องที่ลบแล้วซ้ำ → 204 อีกครั้ง
       operationId: deleteRoom
       parameters:
         - $ref: '#/components/parameters/RoomIDPath'
       responses:
         '204':
           description: ลบสำเร็จ
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          description: ห้องยังมีการจองที่ยังไม่จบค้างอยู่
+
+  /api/v1/admin/rooms/{roomID}/status:
+    patch:
+      tags: [admin]
+      summary: เปลี่ยนสถานะห้องแบบ real-time
+      description: ไม่จำกัดว่าเปลี่ยนจากสถานะไหนไปไหน และไม่ตรวจใบจองที่ค้าง
+      operationId: updateRoomStatus
+      parameters:
+        - $ref: '#/components/parameters/RoomIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              additionalProperties: false
+              properties:
+                status:
+                  $ref: '#/components/schemas/RoomStatus'
+      responses:
+        '200':
+          description: เปลี่ยนสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: conflict
-                  message: ลบไม่ได้ ห้องนี้ยังมีการจองค้างอยู่
+                $ref: '#/components/schemas/RoomResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/admin/rooms/{roomID}/image:
     post:
       tags: [admin]
-      summary: อัปโหลดรูปห้อง (เก็บไฟล์ไว้ในฐานข้อมูล)
-      operationId: uploadRoomImage
+      summary: อัปโหลดรูปปกห้อง (รูปเดียวต่อห้อง)
+      description: >
+        ไฟล์เก็บเป็น blob ในตาราง assets แล้ว `image_url` เป็น `{PUBLIC_BASE_URL}/files/ast-NNN`
+        · ไฟล์ถูกบันทึกก่อนตรวจสิทธิ์สาขา (AC-14)
+      operationId: uploadRoomCover
       parameters:
         - $ref: '#/components/parameters/RoomIDPath'
       requestBody:
@@ -1126,38 +1421,28 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              required: [image]
-              properties:
-                image:
-                  type: string
-                  format: binary
-                  description: JPG, PNG หรือ WEBP ขนาดไม่เกิน MAX_UPLOAD_MB
+              $ref: '#/components/schemas/ImageUploadForm'
       responses:
         '200':
-          description: อัปโหลดสำเร็จ คืนห้องที่ image_url ชี้ไปยัง /files/{assetID}
+          description: อัปโหลดสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Room'
+                $ref: '#/components/schemas/RoomResponse'
         '400':
-          description: ไม่ได้แนบไฟล์ ไฟล์ใหญ่เกินไป หรือไม่ใช่ไฟล์รูป
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
   /api/v1/admin/rooms/{roomID}/images:
     post:
       tags: [admin]
-      summary: เพิ่มรูปเข้าแกลเลอรีของห้องด้วย URL ที่โฮสต์ไว้ที่อื่น
-      description: >-
-        แกลเลอรีเป็นคนละช่องกับรูปปก — รูปปกใช้ POST /admin/rooms/{roomID}/image (เอกพจน์)
-        และเก็บได้รูปเดียว ส่วนแกลเลอรีเก็บได้หลายรูป เรียงด้วย sort_order
+      summary: เพิ่มรูปแกลเลอรีห้องจาก URL ภายนอก
+      description: ไม่แตะรูปปก (`rooms.image_url`)
       operationId: addRoomImage
       parameters:
         - $ref: '#/components/parameters/RoomIDPath'
@@ -1168,22 +1453,30 @@ paths:
             schema:
               type: object
               required: [image_url]
+              additionalProperties: false
               properties:
                 image_url:
-                  type: string
-                  format: uri
+                  $ref: '#/components/schemas/ExternalImageURL'
                 sort_order:
                   type: integer
                   default: 0
       responses:
         '201':
-          description: เพิ่มรูปสำเร็จ
+          description: เพิ่มสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoomImage'
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/RoomImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
@@ -1192,8 +1485,8 @@ paths:
   /api/v1/admin/rooms/{roomID}/images/upload:
     post:
       tags: [admin]
-      summary: อัปโหลดไฟล์เข้าแกลเลอรีของห้อง (เก็บไฟล์ไว้ในฐานข้อมูล)
-      operationId: uploadRoomGalleryImage
+      summary: อัปโหลดรูปเข้าแกลเลอรีห้อง
+      operationId: uploadRoomImage
       parameters:
         - $ref: '#/components/parameters/RoomIDPath'
       requestBody:
@@ -1201,38 +1494,33 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              required: [image]
-              properties:
-                image:
-                  type: string
-                  format: binary
-                  description: JPG, PNG หรือ WEBP ขนาดไม่เกิน MAX_UPLOAD_MB
-                sort_order:
-                  type: integer
-                  default: 0
+              $ref: '#/components/schemas/RoomImageUploadForm'
       responses:
         '201':
-          description: อัปโหลดสำเร็จ คืนรูปที่ image_url ชี้ไปยัง /files/{assetID}
+          description: อัปโหลดสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoomImage'
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/RoomImage'
         '400':
-          description: ไม่ได้แนบไฟล์ ไฟล์ใหญ่เกินไป หรือไม่ใช่ไฟล์รูป
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
   /api/v1/admin/rooms/{roomID}/images/{imageID}:
     delete:
       tags: [admin]
-      summary: ลบรูปออกจากแกลเลอรีของห้อง
+      summary: ลบรูปออกจากแกลเลอรีห้อง
+      description: >
+        ตรวจสิทธิ์จากห้องใน URL (คนละสาขา → 403) แต่ SQL ผูกแค่สาขา → รูปของห้องอื่นในสาขาเดียวกันก็ถูกลบได้ (AC-14)
       operationId: deleteRoomImage
       parameters:
         - $ref: '#/components/parameters/RoomIDPath'
@@ -1244,58 +1532,26 @@ paths:
             pattern: "^rimg-[0-9]+$"
       responses:
         '204':
-          description: ลบแล้ว
+          description: ลบสำเร็จ
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-
-  /api/v1/admin/rooms/{roomID}/status:
-    patch:
-      tags: [admin]
-      summary: เปลี่ยนสถานะห้อง
-      operationId: updateRoomStatus
-      parameters:
-        - $ref: '#/components/parameters/RoomIDPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [status]
-              properties:
-                status:
-                  $ref: '#/components/schemas/RoomStatus'
-      responses:
-        '200':
-          description: เปลี่ยนสถานะสำเร็จ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Room'
-        '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
-        '409':
-          description: มีการจองที่ยังไม่จบค้างอยู่
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: conflict
-                  message: เปลี่ยนสถานะไม่ได้ ห้องนี้ยังมีการจองค้างอยู่
-        '422':
-          $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/admin/branch:
     put:
       tags: [admin]
-      summary: แก้ไขรายละเอียดสาขา
+      summary: แก้ไขรายละเอียดสาขา (แทนที่ทั้งชุด)
+      description: >
+        ฟิลด์ตัวเลขแบบ nullable ที่ไม่ส่งมากลายเป็นว่าง · ไม่ส่ง `cover_image_url` = คงรูปเดิม
+        · แก้สาขาที่ปิดใช้งานได้ · คืนสาขาพร้อม images/amenities/nearby_places (AC-26)
       operationId: updateBranch
       parameters:
-        - $ref: '#/components/parameters/BranchIDQuery'
+        - $ref: '#/components/parameters/BranchIDForWrite'
       requestBody:
         required: true
         content:
@@ -1308,58 +1564,80 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Branch'
+                $ref: '#/components/schemas/BranchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '422':
           $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/admin/branch/amenities:
     put:
       tags: [admin]
-      summary: กำหนดสิ่งอำนวยความสะดวกของสาขา
-      operationId: updateBranchAmenities
+      summary: ตั้งสิ่งอำนวยความสะดวกของสาขา (แทนที่ทั้งชุด)
+      description: >
+        ไม่ได้อยู่ใน transaction — id ที่ไม่มีจริง → 500 และ id ซ้ำ → 409 **หลังจากลบรายการเดิมไปแล้ว** (AC-26)
+      operationId: setBranchAmenities
       parameters:
-        - $ref: '#/components/parameters/BranchIDQuery'
+        - $ref: '#/components/parameters/BranchIDForWrite'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [amenity_ids]
+              additionalProperties: false
               properties:
                 amenity_ids:
                   type: array
+                  description: ไม่ส่งหรือ [] = ล้างทั้งหมด
                   items:
                     type: string
                     pattern: "^amt-[0-9]+$"
       responses:
         '200':
-          description: บันทึกสำเร็จ
+          description: รายการใหม่ของสาขา
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Amenity'
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Amenity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalErrorForeignKey'
 
   /api/v1/admin/branch/nearby:
     put:
       tags: [admin]
-      summary: กำหนดสถานที่ใกล้เคียงของสาขา
-      operationId: updateBranchNearby
+      summary: ตั้งสถานที่ใกล้เคียงของสาขา (แทนที่ทั้งชุด)
+      description: >
+        `name` ว่างในรายการใด → 422 `fields.items` · `sort_order = 0` ใช้ลำดับใน array แทน
+        · ไม่ส่ง `items` = ลบทั้งหมด · ไม่ได้อยู่ใน transaction (AC-26)
+      operationId: replaceBranchNearby
       parameters:
-        - $ref: '#/components/parameters/BranchIDQuery'
+        - $ref: '#/components/parameters/BranchIDForWrite'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [items]
+              additionalProperties: false
               properties:
                 items:
                   type: array
@@ -1367,99 +1645,60 @@ paths:
                     $ref: '#/components/schemas/NearbyPlaceInput'
       responses:
         '200':
-          description: บันทึกสำเร็จ
+          description: รายการใหม่ เรียง category, sort_order
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NearbyPlace'
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NearbyPlace'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '422':
           $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/admin/branch/cover:
     post:
       tags: [admin]
-      summary: อัปโหลดรูปปกสาขา (เก็บไฟล์ไว้ในฐานข้อมูล)
+      summary: อัปโหลดรูปปกสาขา
       operationId: uploadBranchCover
       parameters:
-        - $ref: '#/components/parameters/BranchIDQuery'
+        - $ref: '#/components/parameters/BranchIDForWrite'
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
-              type: object
-              required: [image]
-              properties:
-                image:
-                  type: string
-                  format: binary
-                  description: JPG, PNG หรือ WEBP ขนาดไม่เกิน MAX_UPLOAD_MB
+              $ref: '#/components/schemas/ImageUploadForm'
       responses:
         '200':
-          description: อัปโหลดสำเร็จ คืนสาขาที่ cover_image_url ชี้ไปยัง /files/{assetID}
+          description: อัปโหลดสำเร็จ คืนสาขาทั้งก้อน
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Branch'
+                $ref: '#/components/schemas/BranchResponse'
         '400':
-          description: ไม่ได้แนบไฟล์ ไฟล์ใหญ่เกินไป หรือไม่ใช่ไฟล์รูป
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
-
-  /api/v1/admin/branch/images/upload:
-    post:
-      tags: [admin]
-      summary: อัปโหลดรูปแกลเลอรีของสาขา (เก็บไฟล์ไว้ในฐานข้อมูล)
-      operationId: uploadBranchImage
-      parameters:
-        - $ref: '#/components/parameters/BranchIDQuery'
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [image]
-              properties:
-                image:
-                  type: string
-                  format: binary
-                  description: JPG, PNG หรือ WEBP ขนาดไม่เกิน MAX_UPLOAD_MB
-                caption:
-                  type: string
-                sort_order:
-                  type: integer
-      responses:
-        '201':
-          description: อัปโหลดสำเร็จ image_url ชี้ไปยัง /files/{assetID}
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BranchImage'
-        '400':
-          description: ไม่ได้แนบไฟล์ ไฟล์ใหญ่เกินไป หรือไม่ใช่ไฟล์รูป
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/admin/branch/images:
     post:
       tags: [admin]
-      summary: เพิ่มรูปสาขา (รับเป็น URL ภายนอกเท่านั้น)
+      summary: เพิ่มรูปแกลเลอรีสาขาจาก URL ภายนอก
       operationId: addBranchImage
       parameters:
-        - $ref: '#/components/parameters/BranchIDQuery'
+        - $ref: '#/components/parameters/BranchIDForWrite'
       requestBody:
         required: true
         content:
@@ -1467,61 +1706,101 @@ paths:
             schema:
               type: object
               required: [image_url]
+              additionalProperties: false
               properties:
                 image_url:
-                  type: string
-                  format: uri
+                  $ref: '#/components/schemas/ExternalImageURL'
                 caption:
                   type: string
+                  maxLength: 200
                 sort_order:
                   type: integer
+                  default: 0
       responses:
         '201':
-          description: เพิ่มรูปสำเร็จ
+          description: เพิ่มสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BranchImage'
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BranchImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: URL ไม่ถูกต้อง
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/admin/branch/images/upload:
+    post:
+      tags: [admin]
+      summary: อัปโหลดรูปเข้าแกลเลอรีสาขา
+      operationId: uploadBranchImage
+      parameters:
+        - $ref: '#/components/parameters/BranchIDForWrite'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BranchImageUploadForm'
+      responses:
+        '201':
+          description: อัปโหลดสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: validation_failed
-                  message: ข้อมูลไม่ถูกต้อง
-                  fields:
-                    image_url: ต้องเป็น URL แบบ http หรือ https และต้องมีชื่อโฮสต์
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BranchImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/admin/branch/images/{imageID}:
     delete:
       tags: [admin]
-      summary: ลบรูปสาขา
+      summary: ลบรูปแกลเลอรีสาขา
+      description: รูปไม่มีจริงหรือเป็นของสาขาอื่น → 404
       operationId: deleteBranchImage
       parameters:
+        - $ref: '#/components/parameters/BranchIDForWrite'
         - name: imageID
           in: path
           required: true
           schema:
             type: string
             pattern: "^bimg-[0-9]+$"
-        - $ref: '#/components/parameters/BranchIDQuery'
       responses:
         '204':
           description: ลบสำเร็จ
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenCrossBranch'
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  # ================================================================== superadmin
 
   /api/v1/superadmin/branches:
     get:
       tags: [superadmin]
-      summary: รายการสาขาทั้งหมดรวมที่ปิดใช้งาน
+      summary: ทุกสาขารวมที่ปิดใช้งาน
       operationId: listAllBranches
       responses:
         '200':
@@ -1529,14 +1808,17 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Branch'
+                $ref: '#/components/schemas/BranchListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/v1/superadmin/staff:
     get:
       tags: [superadmin]
-      summary: รายชื่อผู้ดูแล
+      summary: รายชื่อผู้ดูแลทั้งหมด (admin + superadmin)
+      description: ไม่รวมคนที่ถูกลบ แต่รวมคนที่ถูกระงับ · เรียง superadmin ก่อนแล้วตามวันที่สร้าง (AC-18)
       operationId: listStaff
       responses:
         '200':
@@ -1544,12 +1826,23 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [superadmin]
-      summary: เพิ่มบัญชีผู้ดูแล
+      summary: เพิ่มผู้ดูแล (role admin) ผูกกับสาขาเดียว
+      description: >
+        ไม่รับรหัสผ่าน — ตั้งจาก `STAFF_DEFAULT_PASSWORD` (→ `SEED_DEFAULT_PASSWORD` → `Wisetsuk!2026`)
+        พร้อม `must_change_password = true` · สาขามี admin อยู่แล้ว → 422 `fields.branch_id` (AC-18)
       operationId: createStaff
       requestBody:
         required: true
@@ -1559,28 +1852,31 @@ paths:
               $ref: '#/components/schemas/CreateStaffRequest'
       responses:
         '201':
-          description: เพิ่มสำเร็จ
+          description: สร้างสำเร็จ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: อีเมลซ้ำหรือไม่พบสาขา
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: validation_failed
-                  message: ข้อมูลไม่ถูกต้อง
-                  fields:
-                    email: อีเมลนี้ถูกใช้งานแล้ว
+          $ref: '#/components/responses/ValidationFailed'
 
   /api/v1/superadmin/staff/{userID}:
     put:
       tags: [superadmin]
-      summary: แก้ไขบัญชีผู้ดูแล
+      summary: แก้ไข / ย้ายสาขา / ระงับ / ตั้งรหัสผ่านใหม่ให้ผู้ดูแล
+      description: |
+        แทนที่ทั้งชุด — ไม่ส่ง `phone` = ล้างเป็นค่าว่าง · ไม่ส่ง `is_active` = คงเดิม (AC-18)
+        - เป้าหมายเป็น member / ไม่มีจริง / ถูกลบ → 404 (ตรวจก่อน body)
+        - เป้าหมาย admin ต้องส่ง `branch_id` · เป้าหมาย superadmin ห้ามส่ง → 422
+        - ระงับตัวเอง → 400
+        - ส่ง `password` → ตั้งรหัสใหม่ + `must_change_password = true` + เพิกถอน refresh token ทุกใบ
+        - ระงับ/ย้ายสาขา มีผลกับ access token ใบเดิมทันที
       operationId: updateStaff
       parameters:
         - $ref: '#/components/parameters/UserIDPath'
@@ -1596,9 +1892,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/UserResponse'
         '400':
-          description: ระงับบัญชีตัวเองไม่ได้
+          description: id ผิดรูปแบบ, body พัง หรือระงับบัญชีตัวเอง
           content:
             application/json:
               schema:
@@ -1606,16 +1902,23 @@ paths:
               example:
                 error:
                   code: bad_request
-                  message: ระงับบัญชีตัวเองไม่ได้
+                  message: ไม่สามารถระงับบัญชีของตนเองได้
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: ไม่พบ หรือเป้าหมายเป็นสมาชิกไม่ใช่ผู้ดูแล
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '500':
+          $ref: '#/components/responses/InternalErrorForeignKey'
     delete:
       tags: [superadmin]
-      summary: ลบบัญชีผู้ดูแล (soft delete)
+      summary: ลบผู้ดูแล (soft delete)
+      description: >
+        ตั้ง `deleted_at` และ `is_active = false` แถวยังอยู่เพื่อ audit · เพิกถอน refresh token ทุกใบ
+        · สาขาว่างลงทันที · เป้าหมายต้องเป็น admin ที่ยังไม่ถูกลบ ไม่งั้น 404 (AC-18)
       operationId: deleteStaff
       parameters:
         - $ref: '#/components/parameters/UserIDPath'
@@ -1623,7 +1926,7 @@ paths:
         '204':
           description: ลบสำเร็จ
         '400':
-          description: ลบบัญชีตัวเองไม่ได้
+          description: id ผิดรูปแบบ หรือลบบัญชีตัวเอง
           content:
             application/json:
               schema:
@@ -1631,7 +1934,11 @@ paths:
               example:
                 error:
                   code: bad_request
-                  message: ลบบัญชีตัวเองไม่ได้
+                  message: ไม่สามารถลบบัญชีของตนเองได้
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1643,11 +1950,13 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+  # ================================================================== parameters
+
   parameters:
     Page:
       name: page
       in: query
-      required: false
+      description: ไม่ใช่จำนวนเต็มบวก → 400
       schema:
         type: integer
         minimum: 1
@@ -1655,34 +1964,55 @@ components:
     PageSize:
       name: page_size
       in: query
-      required: false
+      description: ไม่ใช่จำนวนเต็มบวก → 400 · เกิน 100 ถูกปัดเป็น 100
       schema:
         type: integer
         minimum: 1
         maximum: 100
         default: 20
+    StayTypeQuery:
+      name: stay_type
+      in: query
+      description: ค่าที่ไม่รู้จัก → 400
+      schema:
+        $ref: '#/components/schemas/StayType'
+    BookingStatusQuery:
+      name: status
+      in: query
+      description: '`all` หรือไม่ส่ง = ไม่กรอง · ค่าที่ไม่รู้จัก → 400'
+      schema:
+        type: string
+        enum: [all, pending_payment, awaiting_review, approved, cancelled]
     BranchIDQuery:
       name: branch_id
       in: query
-      required: false
       description: >
-        เจาะดูเฉพาะสาขาเดียว — Admin ระบุสาขาอื่นที่ไม่ใช่ของตัวเองไม่ได้ จะได้ 403
-        ไม่ระบุ = สาขาของตัวเองสำหรับ Admin และทุกสาขาสำหรับ Super Admin
+        Admin: ไม่ส่ง = สาขาตัวเอง · ส่งสาขาอื่น → 403 ·
+        Super Admin: ไม่ส่ง = ทุกสาขา · ส่ง = เจาะสาขาเดียว
       schema:
         type: string
         pattern: "^brn-[0-9]+$"
-    BranchIDPath:
+    BranchIDForWrite:
+      name: branch_id
+      in: query
+      description: >
+        สาขาที่จะแก้ไข (ส่งทาง query ไม่ใช่ body) · Admin: ไม่ส่ง = สาขาตัวเอง · ส่งสาขาอื่น → 403 ·
+        Super Admin: **ต้องส่ง** ไม่งั้น 400 "กรุณาระบุสาขา (branch_id)"
+      schema:
+        type: string
+        pattern: "^brn-[0-9]+$"
+    BranchIDOrSlugPath:
       name: branchID
       in: path
       required: true
-      description: id ของสาขา (brn-001) หรือ slug (เช่น prachauthit-45)
+      description: id ของสาขา (brn-001) หรือ slug
       schema:
         type: string
       examples:
         slug:
           value: prachauthit-45
         id:
-          value: brn-003
+          value: brn-001
     RoomIDPath:
       name: roomID
       in: path
@@ -1694,7 +2024,7 @@ components:
       name: bookingID
       in: path
       required: true
-      description: id ของการจอง (bkg-001) ไม่ใช่ booking_code
+      description: id ของใบจอง (bkg-001) ไม่ใช่ code (PT-001) — ส่ง code มา → 400
       schema:
         type: string
         pattern: "^bkg-[0-9]+$"
@@ -1705,10 +2035,28 @@ components:
       schema:
         type: string
         pattern: "^usr-[0-9]+$"
+    AssetIDPath:
+      name: assetID
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^ast-[0-9]+$"
+    ProviderPath:
+      name: provider
+      in: path
+      required: true
+      description: ไม่สนตัวพิมพ์
+      schema:
+        $ref: '#/components/schemas/OAuthProvider'
+
+  # ================================================================== responses
 
   responses:
     BadRequest:
-      description: คำขอไม่ถูกต้อง
+      description: >
+        body พาร์สไม่ได้/ชนิดผิด, id หรือ query ผิดรูปแบบ, ไฟล์อัปโหลดผิดหรือใหญ่เกิน,
+        ข้อความ multipart ไม่ใช่ UTF-8, หรือกรณีเฉพาะที่ระบุไว้ใน endpoint
       content:
         application/json:
           schema:
@@ -1716,9 +2064,9 @@ components:
           example:
             error:
               code: bad_request
-              message: คำขอไม่ถูกต้อง
+              message: รหัสอ้างอิงไม่ถูกต้อง (ต้องอยู่ในรูปแบบ bkg-001)
     Unauthorized:
-      description: ไม่ได้ล็อกอินหรือ token ใช้ไม่ได้
+      description: ไม่มี token, token ใช้ไม่ได้/หมดอายุ หรือบัญชีถูกลบ/ระงับไปแล้ว
       content:
         application/json:
           schema:
@@ -1727,8 +2075,8 @@ components:
             error:
               code: unauthorized
               message: กรุณาเข้าสู่ระบบ
-    ForbiddenCrossBranch:
-      description: ไม่มีสิทธิ์เข้าถึงข้อมูลข้ามสาขา
+    Forbidden:
+      description: บทบาทไม่พอ หรือ Admin แตะข้อมูลของสาขาอื่น
       content:
         application/json:
           schema:
@@ -1736,9 +2084,19 @@ components:
           example:
             error:
               code: forbidden
-              message: เข้าถึงข้อมูลสาขาอื่นไม่ได้
+              message: คุณไม่มีสิทธิ์เข้าถึงส่วนนี้
+    AccountDisabled:
+      description: บัญชีถูกระงับ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: account_disabled
+              message: บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ
     NotFound:
-      description: ไม่พบข้อมูล
+      description: ไม่พบข้อมูล หรือไม่ใช่ของผู้เรียก (ไม่ยืนยันว่ารหัสมีจริง)
       content:
         application/json:
           schema:
@@ -1746,9 +2104,29 @@ components:
           example:
             error:
               code: not_found
-              message: ไม่พบข้อมูลที่ระบุ
-    InvalidState:
-      description: สถานะปัจจุบันทำรายการนี้ไม่ได้
+              message: ไม่พบข้อมูลที่ต้องการ
+    Conflict:
+      description: ชน unique constraint ที่ไม่ได้แปลงเป็น 422
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: conflict
+              message: ข้อมูลนี้มีอยู่ในระบบแล้ว
+    RoomUnavailable:
+      description: ห้องไม่ว่างในช่วงที่ขอ หรือสถานะห้องไม่ใช่ available
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: room_unavailable
+              message: ขออภัย ห้องนี้ถูกจองไปแล้วในช่วงวันที่ที่เลือก กรุณาเลือกห้องหรือวันที่อื่น
+    NotAwaitingReview:
+      description: ใบจองไม่ได้อยู่ในสถานะรอตรวจสอบ
       content:
         application/json:
           schema:
@@ -1756,9 +2134,9 @@ components:
           example:
             error:
               code: invalid_state
-              message: สถานะปัจจุบันทำรายการนี้ไม่ได้
+              message: รายการจองนี้ไม่ได้อยู่ในสถานะรอตรวจสอบ
     ValidationFailed:
-      description: ข้อมูลไม่ผ่านการตรวจสอบ
+      description: ค่าถูกชนิดแต่ผิดกติกา หรือส่งฟิลด์ที่ไม่รู้จัก — รายละเอียดรายฟิลด์อยู่ใน `fields`
       content:
         application/json:
           schema:
@@ -1766,11 +2144,43 @@ components:
           example:
             error:
               code: validation_failed
-              message: ข้อมูลไม่ถูกต้อง
+              message: ข้อมูลที่กรอกไม่ถูกต้อง
               fields:
                 email: อีเมลนี้ถูกใช้งานแล้ว
+    TooManyRequests:
+      description: ทำรายการถี่เกินกำหนด
+      headers:
+        Retry-After:
+          description: จำนวนวินาทีที่ต้องรอ (อย่างน้อย 1)
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: too_many_requests
+              message: เข้าสู่ระบบผิดหลายครั้งเกินไป กรุณาลองใหม่ใน 15 นาที
+    InternalErrorForeignKey:
+      description: >
+        **ช่องว่างที่รู้แล้ว** — อ้าง id ที่ไม่มีอยู่จริง (room_type_id, amenity_ids ของสาขา, branch_id ตอนย้ายผู้ดูแล)
+        ชน foreign key ที่ยังไม่ถูกแปลงเป็น 422 จึงกลายเป็น 500 (SPEC AC-21)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: internal_error
+              message: เกิดข้อผิดพลาดภายในระบบ
+
+  # ================================================================== schemas
 
   schemas:
+
+    # ---------------------------------------------------------------- error / paging
 
     ErrorCode:
       type: string
@@ -1801,76 +2211,12 @@ components:
               $ref: '#/components/schemas/ErrorCode'
             message:
               type: string
-              description: ข้อความภาษาไทยสำหรับผู้ใช้
+              description: ข้อความภาษาไทยสำหรับแสดงผู้ใช้
             fields:
               type: object
-              nullable: true
-              description: มีเฉพาะตอน code = validation_failed
+              description: มีเฉพาะตอน code = validation_failed · คีย์คือชื่อฟิลด์ ค่าคือข้อความไทย
               additionalProperties:
                 type: string
-
-    StayType:
-      type: string
-      enum: [daily, monthly]
-
-    BookingStatus:
-      type: string
-      enum: [pending_payment, awaiting_review, approved, cancelled]
-
-    RoomStatus:
-      type: string
-      enum: [available, occupied, maintenance]
-
-    UserRole:
-      type: string
-      description: >
-        ตรงกับ enum user_role ใน PostgreSQL — สะกดติดกันไม่มีขีดล่าง
-        frontend ใช้ค่านี้ตัดสินใจว่าจะพาผู้ใช้ไปหน้าไหนหลังล็อกอิน
-        (member → หน้าสมาชิก, admin → หน้าผู้ดูแล, superadmin → หน้าหัวหน้าผู้ดูแล)
-      enum: [member, admin, superadmin]
-
-    ActorRole:
-      type: string
-      description: ใช้ enum เดียวกับ UserRole เพราะคอลัมน์ activity_logs.actor_role เป็นชนิด user_role
-      enum: [member, admin, superadmin]
-
-    PaymentStatus:
-      type: string
-      enum: [pending, approved, rejected]
-
-    ActivityAction:
-      type: string
-      description: >
-        ค่าที่ระบบบันทึกจริง แบ่งเป็นกลุ่มตามคำนำหน้า
-        auth (เข้าใช้งาน) · user (ผู้ใช้แก้ข้อมูลตัวเอง) · booking · room · branch · admin (จัดการบัญชีผู้ดูแล)
-      enum:
-        - auth.register
-        - auth.login
-        - auth.oauth_register
-        - auth.oauth_login
-        - auth.oauth_link
-        - user.update_profile
-        - user.change_password
-        - booking.create
-        - booking.submit_payment
-        - booking.cancel
-        - booking.approve
-        - booking.reject
-        - booking.set_appointment
-        - room.create
-        - room.update
-        - room.update_status
-        - room.update_image
-        - room.delete
-        - branch.update
-        - branch.set_amenities
-        - branch.update_nearby
-        - branch.update_cover
-        - branch.add_image
-        - branch.delete_image
-        - admin.create
-        - admin.update
-        - admin.delete
 
     PageMeta:
       type: object
@@ -1885,79 +2231,185 @@ components:
         total_pages:
           type: integer
 
+    # ---------------------------------------------------------------- enums
+
+    StayType:
+      type: string
+      enum: [daily, monthly]
+
+    BookingStatus:
+      type: string
+      description: >
+        มี 4 ค่าเท่านั้น (migration 0002) — ไม่มี rejected เพราะการปฏิเสธเด้งใบกลับเป็น pending_payment
+        · ใบที่ถือห้องคือ pending_payment / awaiting_review / approved
+      enum: [pending_payment, awaiting_review, approved, cancelled]
+
+    PaymentStatus:
+      type: string
+      enum: [submitted, approved, rejected]
+
+    RoomStatus:
+      type: string
+      enum: [available, occupied, maintenance]
+
+    UserRole:
+      type: string
+      enum: [member, admin, superadmin]
+
+    OAuthProvider:
+      type: string
+      enum: [google, facebook]
+
+    ActivityAction:
+      type: string
+      description: action ทั้ง 29 ค่าที่โค้ดบันทึกจริง (AC-13)
+      enum:
+        - auth.register
+        - auth.login
+        - auth.oauth_login
+        - auth.oauth_link
+        - auth.oauth_register
+        - user.update_profile
+        - user.change_password
+        - admin.create
+        - admin.update
+        - admin.delete
+        - booking.create
+        - booking.submit_payment
+        - booking.cancel
+        - booking.approve
+        - booking.reject
+        - booking.set_appointment
+        - branch.update
+        - branch.set_amenities
+        - branch.update_nearby
+        - branch.update_cover
+        - branch.add_image
+        - branch.delete_image
+        - room.create
+        - room.update
+        - room.update_image
+        - room.add_image
+        - room.delete_image
+        - room.update_status
+        - room.delete
+
+    ExternalImageURL:
+      type: string
+      format: uri
+      maxLength: 2048
+      description: ต้องเป็น http/https ที่มี host · `javascript:`, `data:`, path สัมพัทธ์ → 422
+
+    # ---------------------------------------------------------------- users / auth
+
     User:
       type: object
-      required: [id, email, first_name, last_name, phone, role, is_active, created_at]
+      required: [id, email, first_name, last_name, phone, role, must_change_password,
+                 avatar_url, is_active, created_at, updated_at]
       properties:
         id:
           type: string
-          pattern: "^usr-[0-9]+$"
+          pattern: "^usr-[0-9]{3,}$"
         email:
           type: string
           format: email
+          description: ตัวพิมพ์เล็กเสมอ
         first_name:
           type: string
         last_name:
           type: string
         phone:
           type: string
+          description: ค่าว่างได้ (บัญชีจาก OAuth, member จาก seed, staff ที่ไม่กรอก)
         role:
           $ref: '#/components/schemas/UserRole'
         branch_id:
           type: string
-          pattern: "^brn-[0-9]+$"
-          nullable: true
-          description: >
-            สาขาที่รับผิดชอบ มีค่าเฉพาะ role = admin ซึ่งผูกกับสาขาเดียวเสมอ
-            (superadmin เข้าถึงทุกสาขาอยู่แล้วจึงไม่ผูกกับสาขาใด)
+          pattern: "^brn-[0-9]{3,}$"
+          description: มีเฉพาะ role = admin
         branch_name:
           type: string
-          description: ชื่อของสาขาข้างบน ส่งมาด้วยเพื่อให้ตารางแสดงผลได้โดยไม่ต้องยิงถามรายการสาขาซ้ำ
+          description: ชื่อสาขาของ branch_id
         must_change_password:
           type: boolean
           description: >
-            true เมื่อบัญชีนี้ยังใช้รหัสผ่านตั้งต้นที่ระบบกำหนดให้ตอนสร้าง
-            frontend ต้องบังคับให้ตั้งรหัสผ่านใหม่ก่อนใช้งานส่วนอื่น
+            true เมื่อยังใช้รหัสที่คนอื่นตั้งให้ (super admin สร้าง/รีเซ็ต) — backend ไม่ได้บังคับ
+            frontend ต้องพาไปเปลี่ยนรหัสเอง
         avatar_url:
           type: string
-          nullable: true
         is_active:
           type: boolean
+        last_login_at:
+          type: string
+          format: date-time
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UserResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+
+    UserPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
 
     TokenPair:
       type: object
-      required: [access_token, refresh_token]
+      required: [access_token, refresh_token, expires_at, token_type, user]
       properties:
         access_token:
           type: string
+          description: >
+            JWT HS256 อายุ 30 นาที · claim: sub (usr-NNN), role, name, branch_id (เฉพาะ admin), iss, iat, nbf, exp, jti
         refresh_token:
           type: string
+          description: สุ่ม 32 ไบต์ base64url อายุ 30 วัน ใช้ได้ครั้งเดียว
+        expires_at:
+          type: string
+          format: date-time
+          description: เวลาหมดอายุของ access_token
+        token_type:
+          type: string
+          enum: [Bearer]
+        user:
+          $ref: '#/components/schemas/User'
 
-    AuthResult:
-      allOf:
-        - $ref: '#/components/schemas/TokenPair'
-        - type: object
-          required: [user]
-          properties:
-            user:
-              $ref: '#/components/schemas/User'
+    TokenPairResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TokenPair'
 
     RegisterRequest:
       type: object
       required: [email, password, first_name, last_name, phone]
       additionalProperties: false
-      description: ส่งฟิลด์ role แถมมาจะได้ 422
+      description: ส่งฟิลด์อื่น (เช่น role) → 422
       properties:
         email:
           type: string
           format: email
+          description: "trim + ตัวพิมพ์เล็ก · ต้องตรง ^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$"
         password:
           type: string
           minLength: 8
           maxLength: 72
+          description: นับเป็นไบต์ · ต้องมีทั้งตัวอักษรและตัวเลข
         first_name:
           type: string
           minLength: 1
@@ -1968,49 +2420,28 @@ components:
           maxLength: 100
         phone:
           type: string
-          pattern: '^[0-9]{9,10}$'
+          pattern: '^[0-9\-\s()+]{8,20}$'
 
     LoginRequest:
       type: object
-      required: [email, password]
+      additionalProperties: false
       properties:
         email:
           type: string
-          format: email
         password:
           type: string
 
     RefreshRequest:
       type: object
-      required: [refresh_token]
+      additionalProperties: false
       properties:
         refresh_token:
           type: string
 
-    ForgotPasswordRequest:
-      type: object
-      required: [email]
-      properties:
-        email:
-          type: string
-          format: email
-
-    ResetPasswordRequest:
-      type: object
-      required: [token, new_password, confirm_password]
-      properties:
-        token:
-          type: string
-          description: token ดิบจาก query string ของลิงก์ในอีเมล (ฐานข้อมูลเก็บแค่ sha256 hash)
-        new_password:
-          type: string
-          minLength: 8
-          maxLength: 72
-        confirm_password:
-          type: string
-
     UpdateProfileRequest:
       type: object
+      required: [first_name, last_name, phone]
+      additionalProperties: false
       properties:
         first_name:
           type: string
@@ -2022,121 +2453,199 @@ components:
           maxLength: 100
         phone:
           type: string
-          pattern: '^[0-9]{9,10}$'
+          pattern: '^[0-9\-\s()+]{8,20}$'
         avatar_url:
           type: string
-          format: uri
-          nullable: true
+          description: ไม่ส่ง = คงค่าเดิม · **ไม่ถูกตรวจรูปแบบ** (ช่องว่างที่รู้แล้ว AC-29)
 
     ChangePasswordRequest:
       type: object
-      required: [current_password, new_password, confirm_password]
+      required: [new_password, confirm_password]
+      additionalProperties: false
       properties:
         current_password:
           type: string
+          description: บังคับเมื่อบัญชีมีรหัสผ่านอยู่แล้ว · ต้องไม่เท่ากับ new_password
         new_password:
           type: string
           minLength: 8
           maxLength: 72
+          description: ต้องมีทั้งตัวอักษรและตัวเลข
         confirm_password:
           type: string
+          description: ต้องเท่ากับ new_password
 
-    Amenity:
+    Notification:
       type: object
-      required: [id, name]
+      required: [id, user_id, title, body, link, created_at]
       properties:
         id:
           type: string
-          pattern: "^amt-[0-9]+$"
-        name:
+          description: >
+            **ช่องว่างที่รู้แล้ว** — โค้ดส่งออกด้วย prefix `usr-` (เช่น `usr-005`) ทั้งที่เป็นรหัสแจ้งเตือน
+            ส่งค่านี้ไป `POST /me/notifications/read` ตรง ๆ จะได้ 400 ต้องเปลี่ยน prefix เป็น `ntf-` เอง (AC-5)
+          example: usr-005
+        user_id:
           type: string
-        icon:
+          pattern: "^usr-[0-9]{3,}$"
+        title:
           type: string
-          nullable: true
+        body:
+          type: string
+        link:
+          type: string
+          description: path ฝั่งเว็บ เช่น /bookings/bkg-001
+        read_at:
+          type: string
+          format: date-time
+          description: ไม่มี key นี้ = ยังไม่อ่าน
+        created_at:
+          type: string
+          format: date-time
 
-    RoomType:
+    CreateStaffRequest:
       type: object
-      required: [id, name]
+      required: [email, first_name, last_name, branch_id]
+      additionalProperties: false
       properties:
-        id:
+        email:
           type: string
-          pattern: "^rmt-[0-9]+$"
+          format: email
+          description: ซ้ำกับบัญชีใดก็ได้ (รวมที่ถูกลบ) → 422
+        first_name:
+          type: string
+          minLength: 1
+        last_name:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+          description: ไม่บังคับ · ถ้าส่งต้องตรง ^[0-9\-\s()+]{8,20}$
         branch_id:
           type: string
           pattern: "^brn-[0-9]+$"
-          nullable: true
-        name:
-          type: string
-        capacity:
-          type: integer
-          nullable: true
+          description: ไม่มีสาขานั้น หรือสาขามี admin อยู่แล้ว → 422 `fields.branch_id`
 
-    BranchImage:
+    UpdateStaffRequest:
       type: object
-      required: [id, image_url, sort_order]
+      required: [first_name, last_name]
+      additionalProperties: false
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+        last_name:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+          description: ไม่ส่ง = ล้างเป็นค่าว่าง
+        branch_id:
+          type: string
+          pattern: "^brn-[0-9]+$"
+          description: บังคับเมื่อเป้าหมายเป็น admin · ห้ามส่งเมื่อเป้าหมายเป็น superadmin
+        is_active:
+          type: boolean
+          description: ไม่ส่ง = คงเดิม · ระงับตัวเอง → 400
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          description: ตั้งรหัสใหม่ให้ (ต้องมีทั้งตัวอักษรและตัวเลข) · ว่าง = ไม่เปลี่ยน
+
+    # ---------------------------------------------------------------- branches
+
+    Amenity:
+      type: object
+      required: [id, code, name, icon, sort_order]
       properties:
         id:
           type: string
-          pattern: "^bimg-[0-9]+$"
-        image_url:
+          pattern: "^amt-[0-9]{3,}$"
+        code:
           type: string
-          format: uri
-        caption:
+          example: aircon
+        name:
           type: string
-          nullable: true
+          example: เครื่องปรับอากาศ
+        icon:
+          type: string
+          example: wind
         sort_order:
           type: integer
 
-    RoomImage:
+    BranchImage:
       type: object
-      required: [id, room_id, image_url, sort_order]
-      description: >-
-        รูปในแกลเลอรีของห้อง แยกจาก Room.image_url ที่เป็นรูปปกรูปเดียว
-        ไม่มี caption ต่างจาก BranchImage เพราะรูปในห้องเดียวกันต่างกันแค่มุมกล้อง
+      required: [id, branch_id, image_url, caption, sort_order]
       properties:
         id:
           type: string
-          pattern: "^rimg-[0-9]+$"
-        room_id:
+          pattern: "^bimg-[0-9]{3,}$"
+        branch_id:
           type: string
-          pattern: "^rm-[0-9]+$"
+          pattern: "^brn-[0-9]{3,}$"
         image_url:
           type: string
-          format: uri
+          description: '`{PUBLIC_BASE_URL}/files/ast-NNN` (อัปโหลด), `{PUBLIC_BASE_URL}/uploads/...` (seed) หรือ URL ภายนอก'
+        caption:
+          type: string
         sort_order:
           type: integer
 
     NearbyPlaceInput:
       type: object
       required: [name]
+      additionalProperties: false
       properties:
-        name:
-          type: string
         category:
           type: string
-          nullable: true
-        distance_km:
-          type: number
-          nullable: true
+          description: free text · ที่ seed ใช้คือ education, hospital, shopping
+        name:
+          type: string
+          minLength: 1
+        distance:
+          type: string
+          example: 600 เมตร
+        sort_order:
+          type: integer
+          description: 0 = ใช้ลำดับใน array
 
     NearbyPlace:
-      allOf:
-        - type: object
-          required: [id]
-          properties:
-            id:
-              type: string
-              pattern: "^np-[0-9]+$"
-        - $ref: '#/components/schemas/NearbyPlaceInput'
-
-    Branch:
       type: object
-      required: [id, name, address, contract_fee, is_active]
+      required: [id, branch_id, category, name, distance, sort_order]
       properties:
         id:
           type: string
-          pattern: "^brn-[0-9]+$"
+          pattern: "^np-[0-9]{3,}$"
+        branch_id:
+          type: string
+          pattern: "^brn-[0-9]{3,}$"
+        category:
+          type: string
         name:
+          type: string
+        distance:
+          type: string
+        sort_order:
+          type: integer
+
+    Branch:
+      type: object
+      required: [id, slug, name, tagline, description, address, phones, line_id, email, map_url,
+                 building_count, floor_count, water_rate, electric_rate, deposit, advance_payment,
+                 contract_fee, cover_image_url, is_active, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          pattern: "^brn-[0-9]{3,}$"
+        slug:
+          type: string
+          example: prachauthit-45
+        name:
+          type: string
+        tagline:
+          type: string
+        description:
           type: string
         address:
           type: string
@@ -2144,66 +2653,98 @@ components:
           type: array
           items:
             type: string
+        line_id:
+          type: string
+        email:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        map_url:
+          type: string
+        building_count:
+          type: integer
+        floor_count:
+          type: integer
+        daily_price_from:
+          type: number
+          description: ไม่มี key = สาขานี้ไม่มีห้องรายวัน
+        monthly_price_min:
+          type: number
+          description: ไม่มี key = สาขานี้ไม่มีห้องรายเดือน
+        monthly_price_max:
+          type: number
+        water_rate:
+          type: number
+          description: บาท/หน่วย
+        electric_rate:
+          type: number
+          description: บาท/หน่วย
+        deposit:
+          type: number
+        advance_payment:
+          type: number
         contract_fee:
           type: number
-          description: ค่าทำสัญญาที่เก็บตอนจองรายเดือน
+          description: ค่ายืนยันการทำสัญญา — คือ total_amount ของใบจองรายเดือน
+        cover_image_url:
+          type: string
         is_active:
           type: boolean
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        images:
+          type: array
+          description: เรียง sort_order, created_at · ไม่มี key เมื่อว่าง
+          items:
+            $ref: '#/components/schemas/BranchImage'
+        amenities:
+          type: array
+          description: เรียง sort_order, name · ไม่มี key เมื่อว่าง
+          items:
+            $ref: '#/components/schemas/Amenity'
+        nearby_places:
+          type: array
+          description: เรียง category, sort_order · ไม่มี key เมื่อว่าง
+          items:
+            $ref: '#/components/schemas/NearbyPlace'
 
-    BranchSummary:
+    BranchResponse:
       type: object
-      description: ตัวเลขสรุปรายสาขาที่แสดงเป็นการ์ด 3 ใบบนแดชบอร์ด
-      required: [branch_id, branch_name, daily_rooms_free, daily_rooms_total,
-                 monthly_rooms_free, monthly_rooms_total, pending_review, bookings_total]
+      required: [data]
       properties:
-        branch_id:
-          type: string
-          pattern: "^brn-[0-9]+$"
-        branch_name:
-          type: string
-        daily_rooms_free:
-          type: integer
-          description: การ์ด "ห้องว่างรายวันวันนี้" ตัวเศษ
-        daily_rooms_total:
-          type: integer
-          description: การ์ด "ห้องว่างรายวันวันนี้" ตัวส่วน — นับเฉพาะห้องที่ is_active
-        monthly_rooms_free:
-          type: integer
-        monthly_rooms_total:
-          type: integer
-        pending_review:
-          type: integer
-          description: การ์ด "รอตรวจสอบการจอง" ตัวเศษ — ใบที่สถานะ awaiting_review
-        bookings_total:
-          type: integer
-          description: การ์ด "รอตรวจสอบการจอง" ตัวส่วน — ใบจองทั้งหมดของสาขานี้
+        data:
+          $ref: '#/components/schemas/Branch'
 
-    BranchDetail:
-      allOf:
-        - $ref: '#/components/schemas/Branch'
-        - type: object
-          required: [images, amenities, nearby]
-          properties:
-            images:
-              type: array
-              items:
-                $ref: '#/components/schemas/BranchImage'
-            amenities:
-              type: array
-              items:
-                $ref: '#/components/schemas/Amenity'
-            nearby:
-              type: array
-              items:
-                $ref: '#/components/schemas/NearbyPlace'
+    BranchListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Branch'
 
     UpdateBranchRequest:
       type: object
+      required: [name, building_count, floor_count]
+      additionalProperties: false
+      description: >
+        แทนที่ทั้งชุด — ฟิลด์ที่ไม่ส่งกลายเป็นค่าว่าง/0/NULL ยกเว้น cover_image_url ที่คงเดิม
+        · **ไม่ส่ง phones อาจได้ 500** (ยังไม่ยืนยัน AC-26) ให้ส่ง [] ถ้าไม่มีเบอร์
       properties:
         name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tagline:
+          type: string
+        description:
           type: string
         address:
           type: string
@@ -2211,51 +2752,169 @@ components:
           type: array
           items:
             type: string
-        contract_fee:
+        line_id:
+          type: string
+        email:
+          type: string
+          description: ไม่ถูกตรวจรูปแบบ
+        latitude:
+          type: number
+        longitude:
+          type: number
+        map_url:
+          type: string
+          description: ไม่ถูกตรวจรูปแบบ
+        building_count:
+          type: integer
+          minimum: 1
+        floor_count:
+          type: integer
+          minimum: 1
+        daily_price_from:
+          type: number
+        monthly_price_min:
+          type: number
+        monthly_price_max:
+          type: number
+          description: ต้อง ≥ monthly_price_min เมื่อส่งมาทั้งคู่
+        water_rate:
           type: number
           minimum: 0
+        electric_rate:
+          type: number
+          minimum: 0
+        deposit:
+          type: number
+          description: ติดลบได้ (ช่องว่างที่รู้แล้ว)
+        advance_payment:
+          type: number
+          description: ติดลบได้ (ช่องว่างที่รู้แล้ว)
+        contract_fee:
+          type: number
+          description: ติดลบได้ (ช่องว่างที่รู้แล้ว) — มีผลกับใบจองรายเดือนใหม่เท่านั้น
+        cover_image_url:
+          allOf:
+            - $ref: '#/components/schemas/ExternalImageURL'
+          description: ไม่ส่ง = คงรูปเดิม · ส่ง "" = ล้างรูป
 
-    Room:
+    ImageUploadForm:
       type: object
-      required: [id, branch_id, room_number, stay_type, price, status]
+      required: [image]
+      properties:
+        image:
+          type: string
+          format: binary
+          description: JPG / PNG / WEBP (ตรวจจากเนื้อไฟล์) ไม่เกิน MAX_UPLOAD_MB (ค่าเริ่มต้น 5MB)
+
+    BranchImageUploadForm:
+      type: object
+      required: [image]
+      properties:
+        image:
+          type: string
+          format: binary
+        caption:
+          type: string
+          maxLength: 200
+          description: ต้องเป็น UTF-8 ไม่งั้น 422
+        sort_order:
+          type: integer
+          description: ไม่ใช่จำนวนเต็ม → 400 · ไม่ส่ง = 0
+
+    # ---------------------------------------------------------------- rooms
+
+    RoomType:
+      type: object
+      required: [id, branch_id, name, description, image_url, sort_order]
       properties:
         id:
           type: string
-          pattern: "^rm-[0-9]+$"
+          pattern: "^rmt-[0-9]{3,}$"
         branch_id:
           type: string
-          pattern: "^brn-[0-9]+$"
+          pattern: "^brn-[0-9]{3,}$"
+        name:
+          type: string
+          example: ห้องแอร์
+        description:
+          type: string
+        size_sqm:
+          type: number
+        image_url:
+          type: string
+        sort_order:
+          type: integer
+
+    RoomImage:
+      type: object
+      required: [id, room_id, image_url, sort_order]
+      properties:
+        id:
+          type: string
+          pattern: "^rimg-[0-9]{3,}$"
+        room_id:
+          type: string
+          pattern: "^rm-[0-9]{3,}$"
+        image_url:
+          type: string
+        sort_order:
+          type: integer
+
+    Room:
+      type: object
+      required: [id, branch_id, room_number, building, floor, stay_type, price, water_rate,
+                 electric_rate, description, image_url, status, is_active, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          pattern: "^rm-[0-9]{3,}$"
+        branch_id:
+          type: string
+          pattern: "^brn-[0-9]{3,}$"
+        branch_name:
+          type: string
         room_type_id:
           type: string
-          pattern: "^rmt-[0-9]+$"
-          nullable: true
+          pattern: "^rmt-[0-9]{3,}$"
+        room_type_name:
+          type: string
         room_number:
+          type: string
+        building:
           type: string
         floor:
           type: integer
-          nullable: true
         stay_type:
           $ref: '#/components/schemas/StayType'
         price:
           type: number
-          description: ราคาต่อคืนเมื่อ stay_type = daily และราคาต่อเดือนเมื่อ monthly
-        status:
-          $ref: '#/components/schemas/RoomStatus'
+          description: ต่อคืนเมื่อ daily · ต่อเดือนเมื่อ monthly
+        water_rate:
+          type: number
+        electric_rate:
+          type: number
+        size_sqm:
+          type: number
         description:
           type: string
-          nullable: true
+        image_url:
+          type: string
+          description: รูปปกห้อง
+        status:
+          $ref: '#/components/schemas/RoomStatus'
+        is_active:
+          type: boolean
+          description: false = ถูกลบ (soft delete)
         amenities:
           type: array
-          description: >-
-            สิ่งอำนวยความสะดวกของห้องนี้ คืนใน GET /rooms/{id} และ GET /rooms/search
-            ไม่คืนใน GET /admin/rooms (หน้าจัดการห้องไม่ได้ใช้)
+          description: >
+            สิ่งอำนวยความสะดวกของห้องนี้ มีใน GET /rooms/{id} และ /rooms/search · ไม่มีใน /admin/rooms
+            และผลของการสร้าง/แก้ไข · ไม่มี key เมื่อว่าง
           items:
             $ref: '#/components/schemas/Amenity'
         images:
           type: array
-          description: >-
-            แกลเลอรีรูปห้อง คืนเฉพาะ GET /rooms/{id} เท่านั้น
-            ผลค้นหาใช้แค่ image_url ที่เป็นรูปปก
+          description: แกลเลอรี มีเฉพาะ GET /rooms/{id} · เรียง sort_order, id · ไม่มี key เมื่อว่าง
           items:
             $ref: '#/components/schemas/RoomImage'
         created_at:
@@ -2265,331 +2924,405 @@ components:
           type: string
           format: date-time
 
-    CreateRoomRequest:
+    RoomResponse:
       type: object
-      required: [branch_id, room_number, stay_type, price]
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Room'
+
+    RoomPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Room'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    SaveRoomRequest:
+      type: object
+      required: [room_number, floor, stay_type, price]
+      additionalProperties: false
+      description: ใช้ทั้งสร้างและแก้ไข (แก้ไข = แทนที่ทั้งชุด)
       properties:
         branch_id:
           type: string
           pattern: "^brn-[0-9]+$"
+          description: ใช้ตอนสร้างเท่านั้น (ดู BranchIDForWrite) · ตอนแก้ไขถูกเมิน
         room_type_id:
           type: string
           pattern: "^rmt-[0-9]+$"
-          nullable: true
+          description: ไม่มีจริง → 500 (ช่องว่าง) · ของสาขาอื่นก็รับ
         room_number:
           type: string
           minLength: 1
+          maxLength: 20
+          description: ซ้ำในสาขา (รวมห้องที่ลบแล้ว) → 422
+        building:
+          type: string
+          default: "1"
         floor:
           type: integer
-          nullable: true
+          minimum: 1
         stay_type:
           $ref: '#/components/schemas/StayType'
         price:
           type: number
           exclusiveMinimum: true
           minimum: 0
+        water_rate:
+          type: number
+          minimum: 0
+        electric_rate:
+          type: number
+          minimum: 0
+        size_sqm:
+          type: number
         description:
           type: string
-          nullable: true
+        image_url:
+          allOf:
+            - $ref: '#/components/schemas/ExternalImageURL'
+          description: ไม่ส่ง = คงรูปเดิม (แก้ไข) หรือว่าง (สร้าง)
+        status:
+          allOf:
+            - $ref: '#/components/schemas/RoomStatus'
+          description: ไม่ส่ง = available
         amenity_ids:
           type: array
-          description: รายการสิ่งอำนวยความสะดวกของห้อง ส่งมาแทนที่ของเดิมทั้งชุด
+          description: ไม่ส่ง = ไม่แตะ · [] = ล้างทั้งหมด · id ไม่มีจริง → 422 · id ซ้ำรับได้
           items:
             type: string
             pattern: "^amt-[0-9]+$"
 
-    UpdateRoomRequest:
+    RoomImageUploadForm:
       type: object
+      required: [image]
       properties:
-        room_type_id:
+        image:
           type: string
-          pattern: "^rmt-[0-9]+$"
-          nullable: true
-        room_number:
-          type: string
-          minLength: 1
-        floor:
+          format: binary
+        sort_order:
           type: integer
-          nullable: true
-        stay_type:
-          $ref: '#/components/schemas/StayType'
-        price:
-          type: number
-          exclusiveMinimum: true
-          minimum: 0
-        description:
-          type: string
-          nullable: true
-        amenity_ids:
-          type: array
-          description: รายการสิ่งอำนวยความสะดวกของห้อง ส่งมาแทนที่ของเดิมทั้งชุด
-          items:
-            type: string
-            pattern: "^amt-[0-9]+$"
+          description: ไม่ใช่จำนวนเต็ม → 400 · ไม่ส่ง = 0
+
+    # ---------------------------------------------------------------- bookings
 
     CreateBookingRequest:
       type: object
       required: [room_id, stay_type, guest_first_name, guest_last_name, guest_phone]
+      additionalProperties: false
+      description: |
+        - daily: บังคับ check_in_date + check_out_date (out > in, in ไม่เป็นอดีตตามปฏิทินไทย)
+        - monthly: บังคับ move_in_date (ไม่เป็นอดีต) · contract_date ไม่บังคับและไม่ตรวจเงื่อนไขวัน
+        - stay_type ต้องตรงกับ stay_type ของห้อง
       properties:
         room_id:
           type: string
           pattern: "^rm-[0-9]+$"
+          description: ผิดรูปแบบ → 400 · ไม่ส่ง → 422 · ไม่มีจริงหรือถูกลบ → 404
         stay_type:
           $ref: '#/components/schemas/StayType'
         guest_first_name:
           type: string
           minLength: 1
-          maxLength: 100
         guest_last_name:
           type: string
           minLength: 1
-          maxLength: 100
         guest_phone:
           type: string
-          pattern: '^[0-9]{9,10}$'
+          pattern: '^[0-9\-\s()+]{8,20}$'
+        emergency_phone:
+          type: string
+          pattern: '^[0-9\-\s()+]{8,20}$'
+        emergency_relation:
+          type: string
         check_in_date:
           type: string
           format: date
-          nullable: true
-          description: บังคับเมื่อ stay_type = daily
         check_out_date:
           type: string
           format: date
-          nullable: true
-          description: บังคับเมื่อ stay_type = daily และต้องมากกว่า check_in_date
         move_in_date:
           type: string
           format: date
-          nullable: true
-          description: บังคับเมื่อ stay_type = monthly
-        note:
+        contract_date:
           type: string
-          nullable: true
+          format: date
 
-    Booking:
+    Payment:
       type: object
-      required: [id, booking_code, room_id, branch_id, user_id, stay_type, status, total_amount, created_at]
+      required: [id, booking_id, amount, transferred_at, slip_url, note, status, reject_reason, created_at]
       properties:
         id:
           type: string
-          pattern: "^bkg-[0-9]+$"
-        booking_code:
+          pattern: "^pay-[0-9]{3,}$"
+        booking_id:
           type: string
-          pattern: '^PT-[0-9]{6,}$'
-          description: ใช้แสดงผลและค้นหาเท่านั้น ห้ามใช้อ้างอิงใน URL
-        room_id:
+          pattern: "^bkg-[0-9]{3,}$"
+        amount:
+          type: number
+          description: ยอดที่สมาชิกแจ้ง ไม่ถูกเทียบกับ total_amount
+        transferred_at:
           type: string
-          pattern: "^rm-[0-9]+$"
-        branch_id:
+          format: date-time
+        slip_url:
           type: string
-          pattern: "^brn-[0-9]+$"
+          description: '`{PUBLIC_BASE_URL}/uploads/slips/YYYY/MM/<uuid>.<ext>` — เปิดได้โดยไม่ต้องล็อกอิน (AC-17)'
+        note:
+          type: string
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        reviewed_by:
+          type: string
+          pattern: "^usr-[0-9]{3,}$"
+        reviewed_at:
+          type: string
+          format: date-time
+        reject_reason:
+          type: string
+          description: เหตุผลที่ปฏิเสธ (ค่าว่างเมื่อไม่ถูกปฏิเสธ)
+        created_at:
+          type: string
+          format: date-time
+
+    Booking:
+      type: object
+      required: [id, code, user_id, branch_id, room_id, stay_type, guest_first_name, guest_last_name,
+                 guest_phone, emergency_phone, emergency_relation, appointment_note, total_amount,
+                 status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          pattern: "^bkg-[0-9]{3,}$"
+        code:
+          type: string
+          pattern: "^PT-[0-9]{3,}$"
+          description: รหัสสำหรับแสดงผล/ค้นหา ห้ามใช้ใน URL
         user_id:
           type: string
-          pattern: "^usr-[0-9]+$"
+          pattern: "^usr-[0-9]{3,}$"
+        branch_id:
+          type: string
+          pattern: "^brn-[0-9]{3,}$"
+        room_id:
+          type: string
+          pattern: "^rm-[0-9]{3,}$"
         stay_type:
           $ref: '#/components/schemas/StayType'
-        status:
-          $ref: '#/components/schemas/BookingStatus'
         guest_first_name:
           type: string
         guest_last_name:
           type: string
         guest_phone:
           type: string
+        emergency_phone:
+          type: string
+        emergency_relation:
+          type: string
         check_in_date:
           type: string
-          format: date
-          nullable: true
+          format: date-time
+          description: วันที่ล้วน ส่งออกเป็นเที่ยงคืน UTC เช่น 2026-08-14T00:00:00Z (ยังไม่ยืนยัน AC-22)
         check_out_date:
           type: string
-          format: date
-          nullable: true
-        move_in_date:
-          type: string
-          format: date
-          nullable: true
+          format: date-time
         nights:
           type: integer
-          nullable: true
-          description: check_out_date - check_in_date เมื่อ stay_type = daily
-        price_per_night:
-          type: number
-          nullable: true
-          description: ราคาที่คัดลอกไว้ตอนจอง ไม่เปลี่ยนตามราคาห้องภายหลัง
-        contract_fee:
-          type: number
-          nullable: true
-          description: ค่าทำสัญญาที่คัดลอกไว้ตอนจอง
-        total_amount:
-          type: number
-        expires_at:
+          description: มีเฉพาะรายวัน
+        move_in_date:
           type: string
           format: date-time
-          nullable: true
-          description: มีค่าเมื่อสถานะเป็น pending_payment
+        contract_date:
+          type: string
+          format: date-time
         appointment_at:
           type: string
           format: date-time
-          nullable: true
+          description: วันนัดทำสัญญาที่แอดมินกำหนด
         appointment_note:
           type: string
-          nullable: true
-        payments:
-          type: array
-          description: ประวัติการแจ้งชำระเงินทุกครั้ง เรียงจากเก่าไปใหม่
-          items:
-            $ref: '#/components/schemas/PaymentAttempt'
+        total_amount:
+          type: number
+          description: รายวัน = ราคา × คืน · รายเดือน = contract_fee · คัดลอกตอนจอง ไม่เปลี่ยนตามราคาภายหลัง
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        reviewed_by:
+          type: string
+          pattern: "^usr-[0-9]{3,}$"
+        reviewed_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-
-    PaymentAttempt:
-      type: object
-      required: [id, amount, transferred_at, status, created_at]
-      properties:
-        id:
+        branch_name:
           type: string
-          pattern: "^pay-[0-9]+$"
+        room_number:
+          type: string
+        member_name:
+          type: string
+          description: ชื่อ-นามสกุลเจ้าของบัญชี (อาจต่างจากผู้เข้าพัก)
+        member_email:
+          type: string
+        latest_payment:
+          allOf:
+            - $ref: '#/components/schemas/Payment'
+          description: >
+            การแจ้งชำระล่าสุด — ใน GET /bookings/{id} และผลของ submit payment มีเสมอถ้าเคยแจ้ง
+            · ในรายการไม่มีสำหรับใบ pending_payment (รวมใบที่ถูกปฏิเสธแล้ว)
+
+    BookingResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Booking'
+
+    BookingPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    SubmitPaymentForm:
+      type: object
+      required: [slip, amount, transferred_at]
+      properties:
+        slip:
+          type: string
+          format: binary
+          description: JPG / PNG / WEBP ไม่เกิน MAX_UPLOAD_MB · ไม่แนบ → 400
         amount:
           type: number
-          description: ยอดที่ผู้ใช้แจ้ง อาจไม่ตรงกับ total_amount ให้ผู้ดูแลเป็นผู้ตัดสิน
+          exclusiveMinimum: true
+          minimum: 0
         transferred_at:
           type: string
-          format: date-time
+          description: RFC3339 หรือ YYYY-MM-DD[ T]HH:MM[:SS] หรือ YYYY-MM-DD (ไม่มี timezone = เวลาไทย) · อนาคตเกิน 5 นาที → 422
+          example: 2026-09-24 14:30
         note:
           type: string
-          nullable: true
-        status:
-          $ref: '#/components/schemas/PaymentStatus'
-        reason:
-          type: string
-          nullable: true
-          description: เหตุผลที่ปฏิเสธ มีค่าเมื่อ status = rejected
-        created_at:
-          type: string
-          format: date-time
+          description: ต้องเป็น UTF-8 ไม่งั้น 400
 
-    Notification:
+    AppointmentRequest:
       type: object
-      required: [id, message, is_read, created_at]
+      required: [appointment_at]
+      additionalProperties: false
       properties:
-        id:
+        appointment_at:
           type: string
-          pattern: "^ntf-[0-9]+$"
-        title:
+          description: RFC3339 หรือ YYYY-MM-DD[ T]HH:MM[:SS] หรือ YYYY-MM-DD (ไม่มี timezone = เวลาไทย) · ต้องอยู่ในอนาคต
+          example: 2026-10-01T10:00:00+07:00
+        note:
           type: string
-          nullable: true
-        message:
+
+    # ---------------------------------------------------------------- reporting
+
+    BranchStats:
+      type: object
+      required: [branch_id, branch_name, daily_rooms_free, daily_rooms_total, monthly_rooms_free,
+                 monthly_rooms_total, pending_review, bookings_total]
+      properties:
+        branch_id:
           type: string
-        booking_code:
+          pattern: "^brn-[0-9]{3,}$"
+        branch_name:
           type: string
-          nullable: true
-        is_read:
-          type: boolean
-        created_at:
-          type: string
-          format: date-time
+        daily_rooms_free:
+          type: integer
+          description: ห้องรายวันที่ is_active และ status = available
+        daily_rooms_total:
+          type: integer
+          description: ห้องรายวันที่ is_active
+        monthly_rooms_free:
+          type: integer
+        monthly_rooms_total:
+          type: integer
+        pending_review:
+          type: integer
+          description: ใบจองสถานะ awaiting_review
+        bookings_total:
+          type: integer
+          description: ใบจองทุกสถานะ
 
     ActivityLog:
       type: object
-      description: หนึ่งบรรทัดในหน้า "ประวัติการใช้งาน" และในกล่องกิจกรรมล่าสุดบนแดชบอร์ด
-      required: [id, actor_name, actor_role, action, created_at]
+      required: [id, actor_role, actor_name, action, entity_type, entity_id, detail, ip_address, created_at]
       properties:
         id:
           type: string
-          pattern: "^log-[0-9]+$"
+          pattern: "^log-[0-9]{3,}$"
         actor_id:
           type: string
-          pattern: "^usr-[0-9]+$"
-          nullable: true
-          description: ไม่ถูกส่งมาเมื่อหาเจ้าของการกระทำไม่ได้แล้ว เช่นบัญชีถูกลบไป
+          pattern: "^usr-[0-9]{3,}$"
+        actor_role:
+          $ref: '#/components/schemas/UserRole'
         actor_name:
           type: string
-          description: คอลัมน์ "ผู้กระทำ" — ชื่อที่คัดลอกไว้ตอนบันทึก จึงไม่เปลี่ยนตามการแก้โปรไฟล์ภายหลัง
-        actor_role:
-          $ref: '#/components/schemas/ActorRole'
+          description: ชื่อ ณ ตอนบันทึก
         branch_id:
           type: string
-          pattern: "^brn-[0-9]+$"
-          nullable: true
+          pattern: "^brn-[0-9]{3,}$"
+          description: >
+            booking/room/branch = สาขาของสิ่งที่ถูกกระทำ · auth/user/admin = สาขาของผู้กระทำ
+            (ไม่มี key สำหรับ member และ superadmin)
         branch_name:
           type: string
-          description: ชื่อสาขาที่ join มาให้แล้ว ไม่ต้องยิงถามสาขาซ้ำเพื่อแสดงผล
         action:
           $ref: '#/components/schemas/ActivityAction'
         entity_type:
           type: string
-          description: ชนิดของสิ่งที่ถูกกระทำ เช่น booking, room, branch, user
+          enum: [user, booking, room, branch, branch_image]
         entity_id:
           type: string
-          description: id ของสิ่งที่ถูกกระทำ เช่น bkg-012
+          example: bkg-012
         detail:
           type: object
           additionalProperties: true
-          description: ข้อมูลเพิ่มเติมรายกรณี ไม่มีรูปร่างตายตัว — เป็น object ว่างเมื่อไม่มีอะไรจะบันทึก
+          description: ข้อมูลเพิ่มเติมรายกรณี · {} เมื่อไม่มี
         ip_address:
           type: string
-          description: คอลัมน์ "IP Address" — เป็นสตริงว่างเมื่ออ่านค่าไม่ได้
         created_at:
           type: string
           format: date-time
 
-    CreateStaffRequest:
+    ActivityLogPage:
       type: object
-      required: [email, first_name, last_name, phone, branch_id]
-      description: >
-        ไม่รับรหัสผ่าน — ระบบตั้งรหัสผ่านตั้งต้นร่วมจาก env STAFF_DEFAULT_PASSWORD ให้เอง
-        แล้วตั้ง must_change_password = true บัญชีใหม่จึงต้องเปลี่ยนรหัสผ่านก่อนใช้งานจริง
+      required: [data, meta]
       properties:
-        email:
-          type: string
-          format: email
-        first_name:
-          type: string
-          minLength: 1
-          maxLength: 100
-        last_name:
-          type: string
-          minLength: 1
-          maxLength: 100
-        phone:
-          type: string
-          pattern: '^[0-9]{9,10}$'
-        branch_id:
-          type: string
-          pattern: "^brn-[0-9]+$"
-          description: >
-            สาขาที่รับผิดชอบ เลือกได้สาขาเดียว
-            เลือกสาขาที่มีผู้ดูแลอยู่แล้วจะได้ 422 เพราะหนึ่งสาขามีผู้ดูแลได้คนเดียว
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityLog'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
 
-    UpdateStaffRequest:
+    Dashboard:
       type: object
+      required: [branches, recent_activities]
       properties:
-        first_name:
-          type: string
-          minLength: 1
-          maxLength: 100
-        last_name:
-          type: string
-          minLength: 1
-          maxLength: 100
-        phone:
-          type: string
-          pattern: '^[0-9]{9,10}$'
-        branch_id:
-          type: string
-          pattern: "^brn-[0-9]+$"
-          description: >
-            ย้ายไปรับผิดชอบสาขานี้แทนสาขาเดิม
-            บังคับเมื่อเป้าหมาย role = admin และต้องไม่ส่งมาเมื่อเป้าหมายเป็น superadmin
-            ย้ายไปสาขาที่มีผู้ดูแลอยู่แล้วจะได้ 422
-        is_active:
-          type: boolean
-        password:
-          type: string
-          minLength: 8
-          maxLength: 72
-          description: ตั้งรหัสผ่านใหม่ให้ผู้ดูแลคนนี้ — ส่งมาแล้ว must_change_password จะถูกตั้งเป็น true
+        branches:
+          type: array
+          description: เรียงตาม created_at ของสาขา
+          items:
+            $ref: '#/components/schemas/BranchStats'
+        recent_activities:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/ActivityLog'
